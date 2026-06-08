@@ -18,8 +18,8 @@ RCLONE_CONFIG_PATH = "/root/.config/rclone/rclone.conf"
 
 MAX_RETRIES     = 5
 RETRY_DELAY     = 8
-STALL_TIMEOUT   = 120
-CONNECT_TIMEOUT = 30
+STALL_TIMEOUT   = 300
+CONNECT_TIMEOUT = 60
 
 RCLONE_DEST = os.environ.get("RCLONE_DEST", "b2:Kop3ma")
 
@@ -56,7 +56,6 @@ def is_progress_line(line):
 
 
 def get_referer(url):
-    """استخراج referer از URL"""
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
 
@@ -73,10 +72,13 @@ def build_cmd(url, filename):
         f" --retries 1"
         f" --contimeout {CONNECT_TIMEOUT}s"
         f" --timeout {STALL_TIMEOUT}s"
+        f" --no-check-length"
+        f" --ignore-size"
         f" --header 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'"
         f" --header 'Referer: {referer}'"
         f" --header 'Accept: */*'"
         f" --header 'Accept-Language: en-US,en;q=0.9'"
+        f" --header 'Connection: keep-alive'"
         f" -vv"
     )
 
