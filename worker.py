@@ -72,8 +72,6 @@ def build_cmd(url, filename):
         f" --retries 1"
         f" --contimeout {CONNECT_TIMEOUT}s"
         f" --timeout {STALL_TIMEOUT}s"
-        f" --no-check-length"
-        f" --ignore-size"
         f" --header 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'"
         f" --header 'Referer: {referer}'"
         f" --header 'Accept: */*'"
