@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Licher — Download Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #080b0e;
+  --s1:       #0e1318;
+  --s2:       #141b22;
+  --border:   #1c2530;
+  --border2:  #253040;
+  --text:     #c0cdd8;
+  --muted:    #4a5a6a;
+  --accent:   #00d4aa;
+  --blue:     #2a9fff;
+  --danger:   #ff4d6a;
+  --warn:     #ffaa00;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  padding: 36px 16px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.25;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wrap {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 700px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+
+/* ── Header ── */
+header {
+  display: flex; align-items: center; gap: 14px;
+  animation: fadeDown .4s ease both;
+}
+.logo {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--accent), var(--blue));
+  border-radius: 12px;
+  display: grid; place-items: center;
+  font-size: 22px; flex-shrink: 0;
+}
+.logo-title { font-family: var(--sans); font-size: 22px; font-weight: 800; color: #fff; }
+.logo-sub   { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 3px; }
+.online-pill {
+  margin-left: auto;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--accent); border: 1px solid rgba(0,212,170,.35);
+  padding: 4px 12px; border-radius: 20px;
+}
+
+/* ── Card ── */
+.card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+  animation: fadeUp .4s ease both;
+}
+.card-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.02);
+}
+.card-head .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 8px var(--accent);
+}
+.card-head-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.card-body { padding: 22px 18px; display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Input ── */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.input-wrap { position: relative; }
+.input-ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--muted); pointer-events: none; }
+input[type=text], input[type=url] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 13px;
+  padding: 11px 13px 11px 38px; outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,170,.1); }
+input::placeholder { color: var(--muted); }
+
+/* ── Start button ── */
+.btn-start {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 13px;
+  background: linear-gradient(135deg, var(--accent), var(--blue));
+  border: none; border-radius: 8px;
+  color: #000; font-family: var(--mono); font-size: 12px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  cursor: pointer; transition: opacity .2s, transform .1s;
+  margin-top: 4px;
+}
+.btn-start:hover { opacity: .88; }
+.btn-start:active { transform: scale(.99); }
+.btn-start:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+.spin { width: 13px; height: 13px; border: 2px solid rgba(0,0,0,.25); border-top-color: #000; border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+.btn-start.loading .spin { display: block; }
+.btn-start.loading .lbl { display: none; }
+
+/* ── Jobs list ── */
+.jobs-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.jobs-toolbar .spacer { flex: 1; }
+.btn-sm {
+  background: none; border: 1px solid var(--border2); color: var(--muted);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+  text-transform: uppercase; padding: 5px 12px; border-radius: 6px;
+  cursor: pointer; transition: color .2s, border-color .2s;
+}
+.btn-sm:hover { color: var(--text); border-color: var(--border2); }
+.btn-sm.danger:hover { color: var(--danger); border-color: var(--danger); }
+.btn-sm.warn:hover   { color: var(--warn);   border-color: var(--warn); }
+
+.jobs-list { display: flex; flex-direction: column; gap: 2px; }
+
+.job-item {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  transition: border-color .2s;
+}
+.job-item:hover { border-color: var(--border2); }
+
+.job-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; cursor: pointer;
+}
+.job-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.job-name { font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.job-pct  { font-size: 11px; color: var(--muted); width: 38px; text-align: right; }
+.job-badge {
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 20px; font-weight: 700;
+}
+.b-queued    { background: rgba(74,90,106,.15);  color: var(--muted); }
+.b-running   { background: rgba(42,159,255,.12); color: var(--blue); }
+.b-done      { background: rgba(0,212,170,.12);  color: var(--accent); }
+.b-failed    { background: rgba(255,77,106,.12); color: var(--danger); }
+.b-cancelled { background: rgba(255,170,0,.1);   color: var(--warn); }
+
+/* Job progress bar (inline) */
+.job-progress {
+  height: 2px; background: var(--border);
+}
+.job-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--blue));
+  transition: width .5s ease;
+}
+
+/* Job expanded detail */
+.job-detail {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+.job-detail.open { display: block; }
+
+.job-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,.15);
+}
+
+/* ── Log terminal ── */
+.log-wrap { }
+.log-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255,255,255,.02);
+  border-bottom: 1px solid var(--border);
+}
+.log-bar-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.log-out {
+  background: #060910; color: #6ec898;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.8;
+  padding: 14px 16px; max-height: 220px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
+  scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+}
+.log-out:empty::before { content: 'No output yet…'; color: var(--muted); font-style: italic; }
+.le { color: var(--danger); }
+.lw { color: var(--warn); }
+.lo { color: var(--accent); }
+.lr { color: var(--muted); }
+
+/* ── Retry counter ── */
+.retry-tag {
+  margin-left: auto;
+  font-size: 10px; color: var(--warn);
+  display: none;
+}
+.retry-tag.visible { display: block; }
+
+/* ── Empty state ── */
+.empty { text-align: center; padding: 36px; color: var(--muted); font-size: 12px; letter-spacing: 1px; }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--s2); border: 1px solid var(--border2);
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  padding: 10px 20px; border-radius: 8px;
+  opacity: 0; transition: opacity .3s, transform .3s;
+  pointer-events: none; z-index: 100; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Animations ── */
+@keyframes fadeDown { from { opacity:0; transform:translateY(-10px) } to { opacity:1; transform:translateY(0) } }
+@keyframes fadeUp   { from { opacity:0; transform:translateY(10px)  } to { opacity:1; transform:translateY(0) } }
+@keyframes spin     { to   { transform: rotate(360deg) } }
+@keyframes pulse    { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+
+@media (max-width: 480px) {
+  body { padding: 20px 10px 60px; }
+  .card-body { padding: 16px 14px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">⚡</div>
+    <div>
+      <div class="logo-title">Licher</div>
+      <div class="logo-sub">Download Manager</div>
+    </div>
+    <span class="online-pill">● Online</span>
+  </header>
+
+  <!-- New Transfer -->
+  <div class="card" style="animation-delay:.05s">
+    <div class="card-head">
+      <div class="dot"></div>
+      <span class="card-head-title">New Transfer</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label>Source URL</label>
+        <div class="input-wrap">
+          <span class="input-ico">🔗</span>
+          <input type="url" id="iUrl" placeholder="https://example.com/file.mp4" spellcheck="false">
+        </div>
+      </div>
+      <div class="field">
+        <label>Save as (filename)</label>
+        <div class="input-wrap">
+          <span class="input-ico">📄</span>
+          <input type="text" id="iFile" placeholder="video.mp4" spellcheck="false">
+        </div>
+      </div>
+      <button class="btn-start" id="startBtn" onclick="startTransfer()">
+        <div class="spin"></div>
+        <span class="lbl">▶ &nbsp;Start Transfer</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Jobs -->
+  <div class="card" id="jobsCard" style="display:none; animation-delay:.1s">
+    <div class="card-head">
+      <div class="dot" style="background:var(--blue);box-shadow:0 0 8px var(--blue)"></div>
+      <span class="card-head-title">Jobs</span>
+      <div class="jobs-toolbar" style="margin-left:auto; gap:6px">
+        <button class="btn-sm" onclick="loadJobs()">↻ Refresh</button>
+        <button class="btn-sm warn" onclick="deleteCompleted()">Clear done</button>
+        <button class="btn-sm danger" onclick="deleteAll()">Clear all</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding:12px 14px">
+      <div class="jobs-list" id="jobsList">
+        <div class="empty">No jobs yet</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+const jobsData    = {};   // id -> job object
+const openDetails = {};   // id -> bool
+let   pollTimer   = null;
+
+const STATUS_COLOR = {
+  queued:    'var(--muted)',
+  running:   'var(--blue)',
+  done:      'var(--accent)',
+  failed:    'var(--danger)',
+  cancelled: 'var(--warn)',
+};
+
+// ── API helpers ────────────────────────────────────────────────
+async function api(path, method = 'GET') {
+  const r = await fetch(path, { method });
+  return r.json();
+}
+
+// ── Start transfer ─────────────────────────────────────────────
+async function startTransfer() {
+  const url  = document.getElementById('iUrl').value.trim();
+  const file = document.getElementById('iFile').value.trim();
+  const btn  = document.getElementById('startBtn');
+
+  if (!url || !file) { shake(btn); toast('Fill in both fields'); return; }
+
+  btn.disabled = true; btn.classList.add('loading');
+
+  try {
+    const form = new FormData();
+    form.append('url', url); form.append('filename', file);
+    const data = await fetch('/start', { method: 'POST', body: form }).then(r => r.json());
+
+    if (data.error) { toast('✗ ' + data.error); return; }
+
+    document.getElementById('iUrl').value  = '';
+    document.getElementById('iFile').value = '';
+
+    toast('✓ Transfer queued');
+    showJobsCard();
+    startPolling();
+
+  } catch(e) { toast('✗ Network error'); }
+  finally    { btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+// ── Poll ───────────────────────────────────────────────────────
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(loadJobs, 2500);
+}
+
+function stopPolling() {
+  clearInterval(pollTimer); pollTimer = null;
+}
+
+async function loadJobs() {
+  try {
+    const data = await api('/jobs');
+    Object.assign(jobsData, data);
+    // remove deleted
+    for (const id of Object.keys(jobsData)) {
+      if (!data[id]) delete jobsData[id];
+    }
+    renderJobs();
+
+    // Stop polling if nothing active
+    const hasActive = Object.values(data).some(j => j.status === 'queued' || j.status === 'running');
+    if (!hasActive) stopPolling();
+
+  } catch(e) { console.error(e); }
+}
+
+// ── Render ─────────────────────────────────────────────────────
+function renderJobs() {
+  const list = document.getElementById('jobsList');
+  const entries = Object.entries(jobsData).reverse();
+
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty">No jobs</div>';
+    document.getElementById('jobsCard').style.display = 'none';
+    return;
+  }
+
+  showJobsCard();
+
+  // Update existing or create new
+  const existingIds = new Set([...list.querySelectorAll('.job-item')].map(el => el.dataset.id));
+  const newIds      = new Set(entries.map(([id]) => id));
+
+  // Remove deleted
+  for (const el of list.querySelectorAll('.job-item')) {
+    if (!newIds.has(el.dataset.id)) el.remove();
+  }
+
+  for (const [id, job] of entries) {
+    let item = list.querySelector(`.job-item[data-id="${id}"]`);
+
+    if (!item) {
+      item = buildJobItem(id, job);
+      list.insertBefore(item, list.firstChild);
+    } else {
+      updateJobItem(item, id, job);
+    }
+  }
+}
+
+function buildJobItem(id, job) {
+  const div = document.createElement('div');
+  div.className = 'job-item';
+  div.dataset.id = id;
+  div.innerHTML = jobItemHTML(id, job);
+  return div;
+}
+
+function jobItemHTML(id, job) {
+  const color = STATUS_COLOR[job.status] || 'var(--muted)';
+  const pct   = job.progress > 0 ? `${job.progress.toFixed(0)}%` : '';
+  const open  = openDetails[id] ? 'open' : '';
+
+  const maxR = 5;
+  const retryHTML = (job.retries > 0)
+    ? `<span style="font-size:10px;color:var(--warn);margin-left:8px" title="Retry attempts">↻ ${job.retries}/${maxR}</span>`
+    : '';
+
+  return `
+    <div class="job-row" onclick="toggleDetail('${id}')">
+      <div class="job-status-dot" style="background:${color};box-shadow:0 0 6px ${color}${job.status==='running'?';animation:pulse 1.2s infinite':''}"></div>
+      <span class="job-name">${esc(job.filename || id.slice(0,8))}</span>
+      <div class="job-meta">
+        ${retryHTML}
+        <span class="job-pct">${pct}</span>
+        <span class="job-badge b-${job.status}">${job.status}</span>
+      </div>
+    </div>
+    <div class="job-progress">
+      <div class="job-progress-fill" style="width:${job.progress||0}%;${job.status==='failed'?'background:var(--danger)':''}${job.status==='cancelled'?'background:var(--warn)':''}"></div>
+    </div>
+    <div class="job-detail ${open}">
+      <div class="job-actions">
+        ${job.status === 'running' || job.status === 'queued'
+          ? `<button class="btn-sm danger stop-btn" onclick="cancelJob('${id}');event.stopPropagation()">⏹ Stop</button>`
+          : ''}
+        <button class="btn-sm danger" onclick="event.stopPropagation();deleteJob('${id}')">🗑 Delete</button>
+        <button class="btn-sm" onclick="event.stopPropagation();copyLog('${id}')">⎘ Copy log</button>
+        ${job.started_at ? `<span style="font-size:10px;color:var(--muted);margin-left:auto">Started ${job.started_at}${job.finished_at ? ' · Done '+job.finished_at : ''}</span>` : ''}
+      </div>
+      <div class="log-wrap">
+        <div class="log-bar">
+          <span class="log-bar-title">Output Log</span>
+        </div>
+        <div class="log-out" id="log-${id}">${renderLogHTML(job.log)}</div>
+      </div>
+    </div>`;
+}
+
+function updateJobItem(item, id, job) {
+  const color = STATUS_COLOR[job.status] || 'var(--muted)';
+  const pct   = job.progress > 0 ? `${job.progress.toFixed(0)}%` : '';
+
+  // dot
+  const dot = item.querySelector('.job-status-dot');
+  if (dot) {
+    dot.style.background  = color;
+    dot.style.boxShadow   = `0 0 6px ${color}`;
+    dot.style.animation   = job.status === 'running' ? 'pulse 1.2s infinite' : '';
+  }
+
+  // badge
+  const badge = item.querySelector('.job-badge');
+  if (badge) { badge.className = `job-badge b-${job.status}`; badge.textContent = job.status; }
+
+  // pct
+  const pctEl = item.querySelector('.job-pct');
+  if (pctEl) pctEl.textContent = pct;
+
+  // progress bar
+  const bar = item.querySelector('.job-progress-fill');
+  if (bar) {
+    bar.style.width = (job.progress || 0) + '%';
+    bar.style.background = job.status === 'failed' ? 'var(--danger)' : job.status === 'cancelled' ? 'var(--warn)' : '';
+  }
+
+  // retry
+  const meta = item.querySelector('.job-meta');
+  let retryEl = meta && meta.querySelector('.retry-cnt');
+  if (job.retries > 0) {
+    if (!retryEl && meta) {
+      retryEl = document.createElement('span');
+      retryEl.className = 'retry-cnt';
+      retryEl.style.cssText = 'font-size:10px;color:var(--warn);margin-left:8px';
+      meta.insertBefore(retryEl, meta.firstChild);
+    }
+    if (retryEl) retryEl.textContent = `↻ ${job.retries}`;
+  }
+
+  // log
+  const logEl = item.querySelector(`#log-${id}`);
+  if (logEl && openDetails[id]) {
+    logEl.innerHTML = renderLogHTML(job.log);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // actions: sync stop button visibility
+  const actions = item.querySelector('.job-actions');
+  if (actions) {
+    const stopBtn = actions.querySelector('.stop-btn');
+    if (job.status === 'running' || job.status === 'queued') {
+      if (!stopBtn) {
+        const btn = document.createElement('button');
+        btn.className = 'btn-sm danger stop-btn';
+        btn.textContent = '⏹ Stop';
+        btn.onclick = (e) => { e.stopPropagation(); cancelJob(id); };
+        actions.insertBefore(btn, actions.firstChild);
+      }
+    } else {
+      if (stopBtn) stopBtn.remove();
+    }
+  }
+}
+
+function renderLogHTML(log) {
+  if (!log) return '';
+  return log.split('\n').map(line => {
+    const e = esc(line);
+    if (/error|failed|critical/i.test(line))  return `<span class="le">${e}</span>`;
+    if (/warn|notice/i.test(line))             return `<span class="lw">${e}</span>`;
+    if (/✓|complete|done|100%/i.test(line))   return `<span class="lo">${e}</span>`;
+    if (/retrying|retry/i.test(line))         return `<span class="lr">${e}</span>`;
+    return e;
+  }).join('\n');
+}
+
+// ── Actions ────────────────────────────────────────────────────
+function toggleDetail(id) {
+  openDetails[id] = !openDetails[id];
+  const item = document.querySelector(`.job-item[data-id="${id}"]`);
+  if (!item) return;
+  const detail = item.querySelector('.job-detail');
+  if (detail) {
+    detail.classList.toggle('open', openDetails[id]);
+    if (openDetails[id]) {
+      const logEl = item.querySelector(`#log-${id}`);
+      if (logEl) logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+}
+
+async function cancelJob(id) {
+  await api(`/cancel/${id}`, 'POST');
+  toast('Transfer stopped');
+  loadJobs();
+}
+
+async function deleteJob(id) {
+  await api(`/delete/${id}`, 'POST');
+  delete jobsData[id];
+  delete openDetails[id];
+  toast('Job deleted');
+  renderJobs();
+}
+
+async function deleteCompleted() {
+  const data = await api('/delete-completed', 'POST');
+  toast(`Cleared ${data.removed} job(s)`);
+  await loadJobs();
+}
+
+async function deleteAll() {
+  if (!confirm('Delete ALL jobs?')) return;
+  await api('/delete-all', 'POST');
+  for (const k of Object.keys(jobsData)) delete jobsData[k];
+  toast('All jobs cleared');
+  renderJobs();
+}
+
+function copyLog(id) {
+  const el = document.getElementById(`log-${id}`);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => toast('Log copied'));
+}
+
+// ── UI helpers ─────────────────────────────────────────────────
+function showJobsCard() {
+  document.getElementById('jobsCard').style.display = '';
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+function shake(el) {
+  el.style.transform = 'translateX(-4px)';
+  setTimeout(() => el.style.transform = 'translateX(4px)',  80);
+  setTimeout(() => el.style.transform = 'translateX(-3px)', 160);
+  setTimeout(() => el.style.transform = '',                  240);
+}
+
+// Enter key
+document.addEventListener('keydown', e => { if (e.key === 'Enter') startTransfer(); });
+
+// Init: load existing jobs
+(async () => {
+  try {
+    const data = await api('/jobs');
+    if (Object.keys(data).length) {
+      Object.assign(jobsData, data);
+      showJobsCard(); renderJobs();
+      const hasActive = Object.values(data).some(j => j.status === 'queued' || j.status === 'running');
+      if (hasActive) startPolling();
+    }
+  } catch(_) {}
+})();
+</script>
+</body>
+</html>
