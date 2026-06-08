@@ -77,7 +77,7 @@ def build_cmd(url, filename):
         f" --header 'Referer: {referer}'"
         f" --header 'Accept: */*'"
         f" --header 'Accept-Language: en-US,en;q=0.9'"
-        f" -v"
+        f" -vv"
     )
 
 
