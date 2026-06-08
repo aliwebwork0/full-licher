@@ -6,6 +6,7 @@ import shlex
 import time
 from queue import Queue
 from datetime import datetime
+from urllib.parse import urlparse
 
 job_queue = Queue()
 jobs = {}
@@ -15,13 +16,12 @@ processes_lock = threading.Lock()
 
 RCLONE_CONFIG_PATH = "/root/.config/rclone/rclone.conf"
 
-MAX_RETRIES    = 5
-RETRY_DELAY    = 8
-STALL_TIMEOUT  = 120
+MAX_RETRIES     = 5
+RETRY_DELAY     = 8
+STALL_TIMEOUT   = 120
 CONNECT_TIMEOUT = 30
 
-# مسیر آپلود در B2 — می‌شه با env var تغییر داد
-BLOMP_DEST = os.environ.get("RCLONE_DEST", "b2:Kop3ma")
+RCLONE_DEST = os.environ.get("RCLONE_DEST", "b2:Kop3ma")
 
 
 def now():
@@ -41,7 +41,6 @@ def append_log(job_id, text):
 
 
 def parse_progress(line):
-    # فرمت rclone: "Transferred: 100% /500.000 MiB, 100%, 10.000 MiB/s, ETA 0s"
     match = re.search(r'(\d+(?:\.\d+)?)\s*%', line)
     if match:
         return float(match.group(1))
@@ -50,25 +49,34 @@ def parse_progress(line):
 
 def is_progress_line(line):
     stripped = line.strip()
-    # خطوط progress rclone معمولاً با Transferred یا ETA یا * شروع می‌شن
     return bool(re.match(
         r'^(Transferred|Elapsed|ETA|Checks|Errors|\*|--)',
         stripped
     ))
 
 
+def get_referer(url):
+    """استخراج referer از URL"""
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def build_cmd(url, filename):
     safe_url  = shlex.quote(url)
-    safe_dest = shlex.quote(f"{BLOMP_DEST}/{filename}")
+    safe_dest = shlex.quote(f"{RCLONE_DEST}/{filename}")
+    referer   = get_referer(url)
 
     return (
         f"rclone copyurl {safe_url} {safe_dest}"
         f" --progress"
         f" --stats 2s"
-        f" --retries 1"           # retry رو خودمون مدیریت می‌کنیم
+        f" --retries 1"
         f" --contimeout {CONNECT_TIMEOUT}s"
         f" --timeout {STALL_TIMEOUT}s"
-        f" --header 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'"
+        f" --header 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'"
+        f" --header 'Referer: {referer}'"
+        f" --header 'Accept: */*'"
+        f" --header 'Accept-Language: en-US,en;q=0.9'"
         f" -v"
     )
 
@@ -99,7 +107,7 @@ def run_job(job):
 
     set_job(job_id, status="running", log="", progress=0, retries=0, started_at=now())
     append_log(job_id, f"[{now()}] Starting transfer: {filename}\n")
-    append_log(job_id, f"[{now()}] Destination: {BLOMP_DEST}/{filename}\n")
+    append_log(job_id, f"[{now()}] Destination: {RCLONE_DEST}/{filename}\n")
 
     cmd = build_cmd(url, filename)
     env = os.environ.copy()
