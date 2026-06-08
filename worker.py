@@ -20,8 +20,8 @@ RETRY_DELAY    = 8
 STALL_TIMEOUT  = 120
 CONNECT_TIMEOUT = 30
 
-# مسیر آپلود در Blomp — می‌شه با env var تغییر داد
-BLOMP_DEST = os.environ.get("BLOMP_DEST", "blomp:Videos")
+# مسیر آپلود در B2 — می‌شه با env var تغییر داد
+BLOMP_DEST = os.environ.get("RCLONE_DEST", "b2:Kop3ma")
 
 
 def now():
