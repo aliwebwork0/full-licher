@@ -13,7 +13,7 @@ jobs_lock = threading.Lock()
 processes = {}
 processes_lock = threading.Lock()
 
-# Session-wide stats with total download/upload tracking
+# Session-wide stats
 session_stats = {
     "total_downloaded_bytes": 0,
     "total_uploaded_bytes": 0,
@@ -21,7 +21,7 @@ session_stats = {
     "jobs_failed": 0,
     "current_speed_dl": 0,
     "current_speed_ul": 0,
-    "history_dl": [],
+    "history_dl": [],   # last 40 data points (bytes/s)
     "history_ul": [],
 }
 stats_lock = threading.Lock()
@@ -80,7 +80,14 @@ def detect_source_type(url):
     return "direct"
 
 
-# Progress parsers
+# ---------------------------------------------------------------------------
+# rclone copyurl progress parser
+#
+# rclone --progress output looks like:
+#   Transferred:   45.678 MiB / 123.456 MiB, 37%, 2.345 MiB/s, ETA 33s
+#   Transferred:   1 / 1, 100%
+#   Elapsed time: 12.3s
+# ---------------------------------------------------------------------------
 RCLONE_XFER_RE = re.compile(
     r'Transferred:\s+'
     r'([\d.]+\s*\S+)\s*/\s*([\d.]+\s*\S+),\s*'
@@ -91,18 +98,23 @@ RCLONE_XFER_RE = re.compile(
 
 
 def parse_rclone_progress(line):
+    """
+    Returns (pct, recv_str, total_str, speed_str, eta_str) or None.
+    pct is an int 0-100.
+    """
     m = RCLONE_XFER_RE.search(line)
     if m:
-        recv_str = m.group(1).strip()
+        recv_str  = m.group(1).strip()
         total_str = m.group(2).strip()
-        pct = int(m.group(3))
+        pct       = int(m.group(3))
         speed_str = (m.group(4) or "").strip()
-        eta_str = (m.group(5) or "").strip()
+        eta_str   = (m.group(5) or "").strip()
         return pct, recv_str, total_str, speed_str, eta_str
     return None
 
 
 def parse_rclone_speed_bytes(speed_str):
+    """Convert '2.345 MiB/s' → bytes/s float."""
     m = re.search(r'([\d.]+)\s*([KkMmGg]i?)[Bb]/s', speed_str)
     if m:
         val = float(m.group(1))
@@ -113,15 +125,17 @@ def parse_rclone_speed_bytes(speed_str):
 
 
 def parse_ytdlp_progress(line):
+    """Parse yt-dlp progress lines."""
+    # [download]  45.3% of   123.45MiB at    2.34MiB/s ETA 00:32
     match = re.search(
         r'\[download\]\s+([\d.]+)%\s+of\s+([\d.]+\s*\S+)\s+at\s+([\d.]+\s*\S+/s)(?:\s+ETA\s+(\S+))?',
         line
     )
     if match:
-        pct = float(match.group(1))
-        size_str = match.group(2)
+        pct       = float(match.group(1))
+        size_str  = match.group(2)
         speed_str = match.group(3)
-        eta_str = match.group(4) or ""
+        eta_str   = match.group(4) or ""
         return pct, size_str, speed_str, eta_str
     return None, None, None, None
 
@@ -159,27 +173,35 @@ def update_speed_history(speed_dl, speed_ul):
             h_ul.pop(0)
 
 
-def add_bytes_downloaded(bytes_added):
+def add_bytes_done(dl_bytes, ul_bytes):
     with stats_lock:
-        session_stats["total_downloaded_bytes"] += bytes_added
+        session_stats["total_downloaded_bytes"] += dl_bytes
+        session_stats["total_uploaded_bytes"]   += ul_bytes
 
 
-def add_bytes_uploaded(bytes_added):
-    with stats_lock:
-        session_stats["total_uploaded_bytes"] += bytes_added
+# ---------------------------------------------------------------------------
+# Command builders
+# ---------------------------------------------------------------------------
 
-
-# ============================================================
-# FIXED: Direct download command with unbuffered output
-# ============================================================
 def build_direct_cmd(url, dest_path):
-    safe_url = shlex.quote(url)
-    safe_dest = shlex.quote(dest_path)
-    referer = get_referer(url)
+    """
+    Use `rclone copyurl` — it handles download + upload itself and emits
+    clean progress lines to stderr (which we redirect to stdout).
 
-    # Use stdbuf to force line-buffered output for real-time progress
+    Progress format (with --progress):
+        Transferred:   45.678 MiB / 123.456 MiB, 37%, 2.345 MiB/s, ETA 33s
+
+    We capture stderr (--progress goes there) via 2>&1 so the single
+    subprocess.PIPE captures everything without breaking rclone's stdin.
+    """
+    safe_url    = shlex.quote(url)
+    safe_dest   = shlex.quote(dest_path)
+    rclone_cfg  = shlex.quote(RCLONE_CONFIG_PATH)
+    referer     = get_referer(url)
+
     return (
-        f"stdbuf -oL -eL rclone copyurl {safe_url} {safe_dest} "
+        f"RCLONE_CONFIG={rclone_cfg} "
+        f"rclone copyurl {safe_url} {safe_dest} "
         f"--progress "
         f"--stats 1s "
         f"--stats-one-line "
@@ -192,12 +214,10 @@ def build_direct_cmd(url, dest_path):
     )
 
 
-# ============================================================
-# FIXED: YouTube/Instagram with upload progress
-# ============================================================
 def build_ytdlp_cmd(url, dest_path, quality="best"):
-    safe_url = shlex.quote(url)
-    safe_dest = shlex.quote(dest_path)
+    safe_url   = shlex.quote(url)
+    safe_dest  = shlex.quote(dest_path)
+    rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
 
     fmt = "bestvideo+bestaudio/best"
     if quality == "1080p":
@@ -212,41 +232,35 @@ def build_ytdlp_cmd(url, dest_path, quality="best"):
     tmp = f"/tmp/ytdl_{os.getpid()}.%(ext)s"
     safe_tmp = shlex.quote(tmp)
 
-    # yt-dlp downloads to temp file, then rclone uploads with --progress
     return (
-        f"export PYTHONUNBUFFERED=1; "
+        f"set -e; "
         f"OUTFILE=$(yt-dlp -f {shlex.quote(fmt)} "
         f"--no-playlist --newline "
         f"--merge-output-format mp4 "
-        f"--progress "
         f"-o {safe_tmp} "
         f"--print after_move:filepath "
-        f"{safe_url} 2>&1); "
-        f"if [ -n \"$OUTFILE\" ] && [ -f \"$OUTFILE\" ]; then "
-        f"  echo '[UPLOAD] Starting upload to MEGA...'; "
-        f"  stdbuf -oL -eL rclone rcat --progress {safe_dest} < \"$OUTFILE\" 2>&1; "
-        f"  rm -f \"$OUTFILE\"; "
-        f"  echo '[UPLOAD] Upload complete!'; "
-        f"fi"
+        f"{safe_url}); "
+        f"RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest} < \"$OUTFILE\"; "
+        f"rm -f \"$OUTFILE\""
     )
 
 
-# ============================================================
-# Main job runner with proper progress tracking
-# ============================================================
+# ---------------------------------------------------------------------------
+# Job runner
+# ---------------------------------------------------------------------------
+
 def run_job(job):
-    job_id = job["id"]
-    url = job["url"]
+    job_id   = job["id"]
+    url      = job["url"]
     filename = job["filename"]
-    dest = job.get("dest", "mega:/Video")
-    quality = job.get("quality", "best")
+    dest     = job.get("dest", "mega:/Video")
+    quality  = job.get("quality", "best")
 
     source_type = detect_source_type(url)
-    dest_path = f"{dest}/{filename}"
+    dest_path   = f"{dest}/{filename}"
 
     set_job(job_id, status="running", log="", progress=0, retries=0,
-            started_at=now(), source_type=source_type, speed="", eta="",
-            downloaded_str="0 B", filesize_str="unknown")
+            started_at=now(), source_type=source_type, speed="", eta="")
     append_log(job_id, f"[{now()}] Starting: {filename}\n")
     append_log(job_id, f"[{now()}] Source: {source_type.upper()} → {dest_path}\n")
 
@@ -257,7 +271,6 @@ def run_job(job):
 
     env = os.environ.copy()
     env["RCLONE_CONFIG"] = RCLONE_CONFIG_PATH
-    env["PYTHONUNBUFFERED"] = "1"
 
     for attempt in range(1, MAX_RETRIES + 1):
         if is_cancelled(job_id):
@@ -273,7 +286,7 @@ def run_job(job):
                 text=True,
                 env=env,
                 start_new_session=True,
-                bufsize=1,
+                bufsize=1,          # line-buffered
             )
 
             with processes_lock:
@@ -285,9 +298,7 @@ def run_job(job):
                     append_log(job_id, f"[{now()}] Cancelled mid-transfer.\n")
                     return
 
-                line = line.rstrip('\n')
-                
-                # Parse yt-dlp download progress
+                # ── yt-dlp progress ──────────────────────────────────────
                 if source_type in ("youtube", "instagram"):
                     pct, size_str, speed_str, eta_str = parse_ytdlp_progress(line)
                     if pct is not None:
@@ -295,24 +306,11 @@ def run_job(job):
                         if size_str:
                             set_job(job_id, filesize_str=size_str)
                         spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                        update_speed_history(spd, 0)
-                        add_bytes_downloaded(int(spd))
-                        continue
-                    
-                    # Parse rclone upload progress (for the upload phase)
-                    if '[UPLOAD]' in line or 'rcat' in line.lower():
-                        upload_result = parse_rclone_progress(line)
-                        if upload_result is not None:
-                            pct, recv_str, total_str, speed_str, eta_str = upload_result
-                            # For upload phase, progress is already 100% from download
-                            # Just show upload speed
-                            set_job(job_id, upload_speed=speed_str or "", upload_progress=pct)
-                            spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                            update_speed_history(0, spd)
-                            add_bytes_uploaded(int(spd))
-                            continue
+                        update_speed_history(spd, 0)   # yt-dlp = download only
+                        add_bytes_done(int(spd), 0)
+                        continue  # don't log raw progress lines
 
-                # Parse rclone copyurl progress (direct download + upload together)
+                # ── rclone copyurl progress ──────────────────────────────
                 result = parse_rclone_progress(line)
                 if result is not None:
                     pct, recv_str, total_str, speed_str, eta_str = result
@@ -322,13 +320,12 @@ def run_job(job):
                             filesize_str=total_str,
                             downloaded_str=recv_str)
                     spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                    # For direct, both download and upload happen simultaneously
+                    # copyurl handles download+upload in one pass → count both directions
                     update_speed_history(spd, spd)
-                    add_bytes_downloaded(int(spd))
-                    add_bytes_uploaded(int(spd))
-                    continue
+                    add_bytes_done(int(spd), int(spd))
+                    continue  # don't echo raw stats lines to log
 
-                # Log everything else
+                # ── everything else → log ────────────────────────────────
                 clean = line.strip()
                 if clean:
                     append_log(job_id, f"[{now()}] {clean}\n")
@@ -377,9 +374,13 @@ def run_job(job):
     append_log(job_id, f"[{now()}] ✗ All {MAX_RETRIES} attempts failed.\n")
 
 
+# ---------------------------------------------------------------------------
+# Worker thread
+# ---------------------------------------------------------------------------
+
 def worker_loop():
     while True:
-        job = job_queue.get()
+        job    = job_queue.get()
         job_id = job["id"]
         try:
             if is_cancelled(job_id):
