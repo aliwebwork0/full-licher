@@ -5,7 +5,12 @@ RUN apk add --no-cache \
     py3-pip \
     curl \
     rclone \
-    bash
+    bash \
+    ffmpeg
+
+# yt-dlp
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod +x /usr/local/bin/yt-dlp
 
 WORKDIR /app
 
