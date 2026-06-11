@@ -305,15 +305,9 @@ def run_job(job):
                         set_job(job_id, progress=pct, speed=speed_str or "", eta=eta_str or "")
                         if size_str:
                             set_job(job_id, filesize_str=size_str)
-                        spd = 0.0
-                        if speed_str:
-                            m = re.search(r'([\d.]+)\s*([KkMmGg]i?)[Bb]/s', speed_str)
-                            if m:
-                                v   = float(m.group(1))
-                                pfx = m.group(2)[0].upper()
-                                mul = {"K": 1024, "M": 1024**2, "G": 1024**3}.get(pfx, 1)
-                                spd = v * mul
-                        update_speed_history(spd, spd * 0.95)
+                        spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
+                        update_speed_history(spd, 0)   # yt-dlp = download only
+                        add_bytes_done(int(spd), 0)
                         continue  # don't log raw progress lines
 
                 # ── rclone copyurl progress ──────────────────────────────
@@ -326,7 +320,9 @@ def run_job(job):
                             filesize_str=total_str,
                             downloaded_str=recv_str)
                     spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                    update_speed_history(spd, spd * 0.95)
+                    # copyurl handles download+upload in one pass → count both directions
+                    update_speed_history(spd, spd)
+                    add_bytes_done(int(spd), int(spd))
                     continue  # don't echo raw stats lines to log
 
                 # ── everything else → log ────────────────────────────────
