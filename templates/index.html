@@ -125,7 +125,88 @@ header {
   animation: blink 2s ease-in-out infinite;
 }
 
+/* ══════════════════════════════════════
+   STATS DASHBOARD
+══════════════════════════════════════ */
+.stats-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 
+.stats-graph-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  padding: 14px 16px 12px;
+}
+
+.stats-graph-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.stats-graph-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 9px; font-family: var(--mono);
+  letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted2);
+}
+.stats-graph-label .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+}
+.dl-dot { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.ul-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+.stats-speed {
+  font-family: var(--mono);
+  font-size: 20px; font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+.stats-speed.dl { color: var(--cyan); }
+.stats-speed.ul { color: var(--green); }
+
+.stats-speed-unit {
+  font-size: 10px; color: var(--muted2);
+  font-weight: 400; margin-left: 2px;
+}
+
+.sparkline-wrap {
+  height: 44px; position: relative;
+}
+canvas.sparkline {
+  width: 100%; height: 100%;
+}
+
+.stats-totals {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+}
+
+.stat-cell {
+  background: var(--s1);
+  padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+
+.stat-cell-label {
+  font-size: 8px; font-family: var(--mono);
+  letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted);
+}
+.stat-cell-val {
+  font-family: var(--mono);
+  font-size: 16px; font-weight: 700;
+  color: var(--text);
+}
+.stat-cell-val.cyan { color: var(--cyan); }
+.stat-cell-val.green { color: var(--green); }
+.stat-cell-val.purple { color: var(--purple); }
 
 /* ══════════════════════════════════════
    INPUT CARD
@@ -320,30 +401,6 @@ select { padding-left: 13px; background-image: none; }
   letter-spacing: 2px; text-transform: uppercase;
   color: var(--muted2); flex: 1;
 }
-
-/* total transferred strip */
-.jobs-total-strip {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 18px 10px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(0,229,255,0.03);
-}
-.jobs-total-label {
-  font-size: 9px; font-family: var(--mono);
-  letter-spacing: 2px; text-transform: uppercase;
-  color: var(--muted);
-}
-.jobs-total-val {
-  font-family: var(--mono); font-weight: 700; font-size: 18px;
-  background: linear-gradient(120deg, var(--cyan), var(--green));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.jobs-total-sub {
-  font-family: var(--mono); font-size: 10px; color: var(--muted2);
-  text-align: right;
-}
-
 .btn-sm {
   background: none; border: 1px solid var(--border2); color: var(--muted2);
   font-family: var(--mono); font-size: 9px; letter-spacing: 1px;
@@ -357,135 +414,66 @@ select { padding-left: 13px; background-image: none; }
 .jobs-list { display: flex; flex-direction: column; gap: 3px; padding: 10px; }
 
 /* ── Job Item ── */
-/* ═══════════════════════════════════
-   JOB CARD — new circular design
-═══════════════════════════════════ */
 .job-item {
   background: var(--s2);
   border: 1px solid var(--border);
-  border-radius: 14px; overflow: hidden;
-  transition: border-color .25s, box-shadow .25s;
+  border-radius: 10px; overflow: hidden;
+  transition: border-color .25s;
 }
 .job-item:hover { border-color: var(--border2); }
-.job-item.is-running {
-  border-color: rgba(0,229,255,0.25);
-  box-shadow: 0 0 0 1px rgba(0,229,255,0.06) inset;
-}
-.job-item.is-done    { border-color: rgba(0,255,157,0.2); }
+.job-item.is-running { border-color: rgba(0,229,255,0.2); }
+.job-item.is-done    { border-color: rgba(0,255,157,0.15); }
 .job-item.is-failed  { border-color: rgba(255,51,102,0.2); }
-.job-item.is-queued  { border-color: rgba(86,112,144,0.2); }
 
-/* ── main row ── */
 .job-row {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 16px; cursor: pointer;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; cursor: pointer;
 }
 
-/* ── left: icon block ── */
 .job-status-icon {
-  width: 34px; height: 34px; flex-shrink: 0;
-  border-radius: 10px; display: grid; place-items: center;
-  font-size: 14px; position: relative;
+  width: 28px; height: 28px; flex-shrink: 0;
+  border-radius: 8px; display: grid; place-items: center;
+  font-size: 12px; position: relative;
 }
-.job-status-icon.queued    { background: rgba(61,85,112,.2);      color: var(--muted2); }
-.job-status-icon.running   { background: rgba(0,229,255,0.1);     color: var(--cyan); }
-.job-status-icon.done      { background: rgba(0,255,157,0.12);    color: var(--green); }
-.job-status-icon.failed    { background: rgba(255,51,102,0.1);    color: var(--red); }
-.job-status-icon.cancelled { background: rgba(255,209,102,0.08);  color: var(--yellow); }
+.job-status-icon.queued  { background: rgba(61,85,112,.2); color: var(--muted2); }
+.job-status-icon.running {
+  background: rgba(0,229,255,0.1);
+  color: var(--cyan);
+}
+.job-status-icon.done    { background: rgba(0,255,157,0.1); color: var(--green); }
+.job-status-icon.failed  { background: rgba(255,51,102,0.1); color: var(--red); }
+.job-status-icon.cancelled { background: rgba(255,209,102,0.08); color: var(--yellow); }
 
+/* blinking ring for running */
 .job-status-icon.running::after {
   content: '';
-  position: absolute; inset: -3px; border-radius: 13px;
+  position: absolute; inset: -3px;
+  border-radius: 10px;
   border: 1.5px solid var(--cyan);
   animation: ring-pulse 1.5s ease-in-out infinite;
 }
 
-/* ── center: info ── */
-.job-info {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column; gap: 5px;
-}
+.job-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .job-name {
-  font-size: 13px; font-weight: 600;
+  font-size: 13px; font-weight: 500;
   color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
-/* transferred amount row */
-.job-transfer-row {
-  display: flex; align-items: baseline; gap: 6px;
-  font-family: var(--mono); font-size: 11px;
-}
-.job-recv  { color: var(--cyan); font-weight: 700; font-size: 13px; }
-.job-sep   { color: var(--muted); }
-.job-total { color: var(--muted2); }
-
-/* speed + eta row */
-.job-meta-row {
+.job-sub {
+  font-size: 10px; font-family: var(--mono);
+  color: var(--muted2);
   display: flex; gap: 10px; flex-wrap: wrap;
-  font-family: var(--mono); font-size: 10px; color: var(--muted2);
 }
-.job-speed { color: var(--cyan); }
-.job-eta   { color: var(--muted2); }
-.job-src-badge {
-  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-  padding: 1px 6px; border-radius: 4px;
-  background: rgba(86,112,144,0.15); color: var(--muted2);
-}
+.job-sub .speed { color: var(--cyan); }
+.job-sub .eta   { color: var(--muted2); }
+.job-sub .size  { color: var(--yellow); }
 
-/* ── right: circular progress ── */
-.job-circle-wrap {
-  flex-shrink: 0; position: relative;
-  width: 56px; height: 56px;
-  display: flex; align-items: center; justify-content: center;
+.job-right {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
 }
-.job-circle-wrap svg {
-  position: absolute; inset: 0;
-  transform: rotate(-90deg);
-}
-.job-circle-track {
-  fill: none;
-  stroke: var(--border2);
-  stroke-width: 3.5;
-}
-.job-circle-fill {
-  fill: none;
-  stroke-width: 3.5;
-  stroke-linecap: round;
-  transition: stroke-dashoffset .7s cubic-bezier(.4,0,.2,1),
-              stroke .3s;
-}
-.job-item.is-running  .job-circle-fill { stroke: url(#circleGrad); }
-.job-item.is-done     .job-circle-fill { stroke: var(--green); }
-.job-item.is-failed   .job-circle-fill { stroke: var(--red); }
-.job-item.is-queued   .job-circle-fill { stroke: var(--muted); }
-.job-item.is-cancelled .job-circle-fill { stroke: var(--yellow); }
-
-.job-circle-label {
-  position: relative; z-index: 1;
-  display: flex; flex-direction: column; align-items: center;
-  gap: 0;
-}
-.job-circle-pct {
+.job-pct {
   font-family: var(--mono); font-size: 13px; font-weight: 700;
-  color: var(--cyan); line-height: 1;
-}
-.job-item.is-done     .job-circle-pct { color: var(--green); }
-.job-item.is-failed   .job-circle-pct { color: var(--red); }
-.job-item.is-queued   .job-circle-pct { color: var(--muted2); }
-.job-item.is-cancelled .job-circle-pct { color: var(--yellow); }
-
-.job-circle-status {
-  font-size: 7px; font-family: var(--mono);
-  letter-spacing: 1px; text-transform: uppercase;
-  color: var(--muted); margin-top: 1px;
-}
-
-/* ── badge strip ── */
-.job-badge-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 16px 12px;
-  margin-top: -4px;
+  color: var(--cyan); width: 40px; text-align: right;
 }
 .job-badge {
   font-size: 8px; font-family: var(--mono);
@@ -498,28 +486,36 @@ select { padding-left: 13px; background-image: none; }
 .b-failed    { background: rgba(255,51,102,.12);   color: var(--red); }
 .b-cancelled { background: rgba(255,209,102,.08);  color: var(--yellow); }
 
-.retry-badge-inline {
-  font-size: 9px; font-family: var(--mono);
-  color: var(--orange); margin-left: auto;
-}
-
-/* ── thin progress bar at very bottom (secondary) ── */
+/* progress bar */
 .job-progress {
-  height: 2px; background: var(--border);
+  height: 3px; background: var(--border);
+  position: relative; overflow: visible;
 }
 .job-progress-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--cyan), var(--green));
-  transition: width .7s cubic-bezier(.4,0,.2,1);
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+  position: relative;
 }
+.job-progress-fill::after {
+  content: '';
+  position: absolute; right: -1px; top: -4px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green), 0 0 20px var(--green);
+  opacity: 0;
+  transition: opacity .3s;
+}
+.job-item.is-running .job-progress-fill::after { opacity: 1; animation: glow-dot 1.5s ease-in-out infinite; }
 .job-item.is-running .job-progress-fill {
-  box-shadow: 0 0 8px rgba(0,229,255,0.6);
+  background: linear-gradient(90deg, var(--cyan), var(--green));
+  box-shadow: 0 0 12px rgba(0,229,255,0.5);
 }
-.job-item.is-failed    .job-progress-fill { background: var(--red); }
-.job-item.is-cancelled .job-progress-fill { background: var(--yellow); }
-.job-item.is-done      .job-progress-fill { background: var(--green); }
+.job-item.is-failed .job-progress-fill { background: var(--red); box-shadow: none; }
+.job-item.is-failed .job-progress-fill::after { display: none; }
+.job-item.is-cancelled .job-progress-fill { background: var(--yellow); box-shadow: none; }
 
-/* ── expand detail ── */
+/* expanded detail */
 .job-detail {
   display: none;
   border-top: 1px solid var(--border);
@@ -773,14 +769,6 @@ select { padding-left: 13px; background-image: none; }
 </head>
 <body>
 
-<svg width="0" height="0" style="position:absolute">
-  <defs>
-    <linearGradient id="circleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#00e5ff"/>
-      <stop offset="100%" stop-color="#00ff9d"/>
-    </linearGradient>
-  </defs>
-</svg>
 <div class="wrap">
 
   <!-- ── HEADER ── -->
@@ -823,6 +811,48 @@ select { padding-left: 13px; background-image: none; }
     </div>
   </header>
 
+  <!-- ── STATS DASHBOARD ── -->
+  <div class="stats-panel anim-fadeup" style="animation-delay:.05s">
+    <div class="stats-graph-card">
+      <div class="stats-graph-header">
+        <div class="stats-graph-label">
+          <div class="dot dl-dot"></div>
+          Download
+        </div>
+        <div class="stats-speed dl" id="dlSpeed">0 <span class="stats-speed-unit">KB/s</span></div>
+      </div>
+      <div class="sparkline-wrap">
+        <canvas class="sparkline" id="dlCanvas"></canvas>
+      </div>
+    </div>
+    <div class="stats-graph-card">
+      <div class="stats-graph-header">
+        <div class="stats-graph-label">
+          <div class="dot ul-dot"></div>
+          Upload
+        </div>
+        <div class="stats-speed ul" id="ulSpeed">0 <span class="stats-speed-unit">KB/s</span></div>
+      </div>
+      <div class="sparkline-wrap">
+        <canvas class="sparkline" id="ulCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-totals anim-fadeup" style="animation-delay:.08s">
+    <div class="stat-cell">
+      <div class="stat-cell-label">Downloaded</div>
+      <div class="stat-cell-val cyan" id="totalDl">0 MB</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-cell-label">Uploaded</div>
+      <div class="stat-cell-val green" id="totalUl">0 MB</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-cell-label">Completed</div>
+      <div class="stat-cell-val purple" id="totalJobs">0 / 0</div>
+    </div>
+  </div>
 
   <!-- ── INPUT CARD ── -->
   <div class="card anim-fadeup" style="animation-delay:.1s">
@@ -852,7 +882,7 @@ select { padding-left: 13px; background-image: none; }
           <span class="input-ico">⊕</span>
           <input type="url" id="iUrl" placeholder="https://..." autocomplete="off"
                  oninput="onUrlInput()" onpaste="onUrlPaste(event)">
-          <span class="input-action probe-status" id="probeStatus" style="display:none"></span>
+          <button class="input-action" onclick="probeUrl()" id="probeBtn" title="Probe URL">inspect</button>
         </div>
       </div>
 
@@ -910,13 +940,6 @@ select { padding-left: 13px; background-image: none; }
       <button class="btn-sm warn" onclick="deleteCompleted()">Clear Done</button>
       <button class="btn-sm danger" onclick="deleteAll()">Kill All</button>
     </div>
-    <div class="jobs-total-strip">
-      <div>
-        <div class="jobs-total-label">Total Transferred → Mega</div>
-        <div class="jobs-total-val" id="grandTotalVal">0 B</div>
-      </div>
-      <div class="jobs-total-sub" id="grandTotalSub">0 files done</div>
-    </div>
     <div class="jobs-list" id="jobsList"></div>
   </div>
 
@@ -945,7 +968,6 @@ select { padding-left: 13px; background-image: none; }
     </div>
     <div class="modal-footer">
       <div class="modal-selected-path" id="modalSelectedPath">No folder selected</div>
-      <button class="btn-sm" onclick="createMegaFolder()" style="flex-shrink:0">+ New Folder</button>
       <button class="btn-confirm" onclick="confirmMegaPath()">Select →</button>
     </div>
   </div>
@@ -994,17 +1016,8 @@ const SRC_ICONS = {
 // ═══════════════════════════════════════════
 // API
 // ═══════════════════════════════════════════
-async function api(path, methodOrBody = 'GET', body = null) {
-  let method = methodOrBody;
-  let opts = { method };
-  if (typeof methodOrBody === 'object' && methodOrBody !== null) {
-    // api(path, {json}) shorthand → POST with JSON body
-    opts = { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(methodOrBody) };
-  } else if (body !== null) {
-    opts.headers = {'Content-Type':'application/json'};
-    opts.body = JSON.stringify(body);
-  }
-  const r = await fetch(path, opts);
+async function api(path, method = 'GET') {
+  const r = await fetch(path, { method });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -1046,17 +1059,6 @@ function onUrlInput() {
   } else if (url.includes('instagram.com')) {
     setSourceTab('instagram');
   }
-  // auto-probe after pause
-  clearTimeout(probeTimer);
-  const status = document.getElementById('probeStatus');
-  if (!url) {
-    document.getElementById('probeInfo').classList.remove('visible');
-    status.style.display = 'none';
-    return;
-  }
-  status.style.display = 'inline';
-  status.textContent = '…';
-  probeTimer = setTimeout(probeUrl, 800);
 }
 
 function onUrlPaste(e) {
@@ -1067,7 +1069,6 @@ async function probeUrl() {
   const url = document.getElementById('iUrl').value.trim();
   if (!url) return;
   const info = document.getElementById('probeInfo');
-  const status = document.getElementById('probeStatus');
   info.classList.remove('visible');
   try {
     const data = await api('/probe?url=' + encodeURIComponent(url));
@@ -1078,15 +1079,8 @@ async function probeUrl() {
       if (data.source_type === 'youtube') setSourceTab('youtube');
       if (data.source_type === 'instagram') setSourceTab('instagram');
       info.classList.add('visible');
-      status.textContent = '✓';
-      setTimeout(() => { status.style.display = 'none'; }, 1500);
-    } else {
-      status.textContent = '—';
-      setTimeout(() => { status.style.display = 'none'; }, 1500);
     }
-  } catch(e) {
-    status.style.display = 'none';
-  }
+  } catch(e) {}
 }
 
 // ═══════════════════════════════════════════
@@ -1156,11 +1150,79 @@ async function loadJobs() {
 async function loadStats() {
   try {
     const data = await api('/stats');
-    const gtVal = document.getElementById('grandTotalVal');
-    if (gtVal) gtVal.textContent = fmtBytes(data.total_uploaded_bytes || 0);
-    const gtSub = document.getElementById('grandTotalSub');
-    if (gtSub) gtSub.textContent = `${data.jobs_done || 0} file${(data.jobs_done||0) !== 1 ? 's' : ''} done`;
+
+    // Speed display
+    const dlSpd = data.current_speed_dl || 0;
+    const ulSpd = data.current_speed_ul || 0;
+    document.getElementById('dlSpeed').innerHTML = fmtSpeed(dlSpd) + ' <span class="stats-speed-unit">B/s</span>';
+    document.getElementById('ulSpeed').innerHTML = fmtSpeed(ulSpd) + ' <span class="stats-speed-unit">B/s</span>';
+
+    // Totals
+    document.getElementById('totalDl').textContent  = fmtBytes(data.total_downloaded_bytes || 0);
+    document.getElementById('totalUl').textContent  = fmtBytes(data.total_uploaded_bytes || 0);
+    document.getElementById('totalJobs').textContent = (data.jobs_done || 0) + ' / ' + ((data.jobs_done || 0) + (data.jobs_failed || 0));
+
+    // Sparklines
+    const histDl = data.history_dl || [];
+    const histUl = data.history_ul || [];
+    drawSparkline('dlCanvas', histDl, '#00e5ff', '#00b8d420');
+    drawSparkline('ulCanvas', histUl, '#00ff9d', '#00c87a20');
+
   } catch(e) {}
+}
+
+// ═══════════════════════════════════════════
+// SPARKLINE
+// ═══════════════════════════════════════════
+function drawSparkline(canvasId, data, lineColor, fillColor) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth; const H = canvas.offsetHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  ctx.clearRect(0, 0, W, H);
+  if (!data || data.length < 2) return;
+
+  const max = Math.max(...data, 1);
+  const pts = data.map((v, i) => ({
+    x: (i / (data.length - 1)) * W,
+    y: H - (v / max) * H * 0.9 - H * 0.05,
+  }));
+
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, H);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, H);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, lineColor + '40');
+  grad.addColorStop(1, lineColor + '00');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Dot at end
+  const last = pts[pts.length-1];
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 3, 0, Math.PI*2);
+  ctx.fillStyle = lineColor;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 5, 0, Math.PI*2);
+  ctx.strokeStyle = lineColor + '60';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 // ═══════════════════════════════════════════
@@ -1191,13 +1253,6 @@ function renderJobs() {
       updateJobItem(item, id, job);
     }
   }
-
-  // grand total: sum filesize of all done jobs
-  // We track this from session_stats (total_uploaded_bytes) which worker already counts
-  // Just update the done count here
-  const doneJobs = entries.filter(([,j]) => j.status === 'done');
-  const gtSub = document.getElementById('grandTotalSub');
-  if (gtSub) gtSub.textContent = `${doneJobs.length} file${doneJobs.length !== 1 ? 's' : ''} done`;
 }
 
 function buildJobItem(id, job) {
@@ -1209,81 +1264,40 @@ function buildJobItem(id, job) {
 }
 
 function jobItemHTML(id, job) {
-  const pct    = Math.min(100, Math.max(0, job.progress || 0));
-  const open   = openDetails[id] ? 'open' : '';
-  const src    = job.source_type || 'direct';
-  const icon   = STATUS_ICON[job.status] || '?';
+  const pct   = job.progress > 0 ? `${job.progress.toFixed(0)}%` : '';
+  const open  = openDetails[id] ? 'open' : '';
+  const src   = job.source_type || 'direct';
+  const icon  = STATUS_ICON[job.status] || '?';
+  const barStyle = job.status === 'failed' ? 'background:var(--red);' :
+                   job.status === 'cancelled' ? 'background:var(--yellow);' : '';
 
-  // circular SVG math
-  const R  = 22; // radius
-  const C  = 2 * Math.PI * R; // circumference ~138.2
-  const dash = C;
-  const offset = C - (pct / 100) * C;
-
-  // transfer display
-  const recvStr  = job.downloaded_str || job.filesize_str || '';
-  const totalStr = job.filesize_str   || '';
-  let transferLine = '';
-  if (job.status === 'running' || job.status === 'done') {
-    if (recvStr && totalStr && recvStr !== totalStr) {
-      transferLine = `<div class="job-transfer-row">
-        <span class="job-recv">${esc(recvStr)}</span>
-        <span class="job-sep">/</span>
-        <span class="job-total">${esc(totalStr)}</span>
-      </div>`;
-    } else if (totalStr) {
-      transferLine = `<div class="job-transfer-row"><span class="job-recv">${esc(totalStr)}</span></div>`;
-    }
-  }
-
-  // speed + eta
-  const metaParts = [];
-  if (job.speed) metaParts.push(`<span class="job-speed">⚡ ${esc(job.speed)}</span>`);
-  if (job.eta)   metaParts.push(`<span class="job-eta">⏱ ${esc(job.eta)}</span>`);
-  metaParts.push(`<span class="job-src-badge">${SRC_ICONS[src]||'⬇'} ${src}</span>`);
-  const metaLine = `<div class="job-meta-row">${metaParts.join('')}</div>`;
-
-  const retryBadge = job.retries > 0
-    ? `<span class="retry-badge-inline">↻ ${job.retries}/${5}</span>`
+  const retryHTML = job.retries > 0
+    ? `<span class="retry-badge">↻ ${job.retries}/${5}</span>`
     : '';
 
-  // circle pct label
-  const circleLabel = job.status === 'queued' ? '…'
-    : job.status === 'done'      ? '✓'
-    : job.status === 'failed'    ? '✕'
-    : job.status === 'cancelled' ? '—'
-    : `${pct.toFixed(0)}%`;
-
-  const circleStatusLabel = job.status === 'running' ? 'xfer'
-    : job.status === 'queued' ? 'wait' : '';
+  const subItems = [];
+  if (job.speed)     subItems.push(`<span class="speed">⚡ ${esc(job.speed)}</span>`);
+  if (job.eta)       subItems.push(`<span class="eta">ETA ${esc(job.eta)}</span>`);
+  if (job.filesize_str) subItems.push(`<span class="size">◈ ${esc(job.filesize_str)}</span>`);
 
   return `
     <div class="job-row" onclick="toggleDetail('${id}')">
       <div class="job-status-icon ${job.status}">${icon}</div>
       <div class="job-info">
-        <div class="job-name">${esc(job.filename || id.slice(0,12))}</div>
-        ${transferLine}
-        ${metaLine}
-      </div>
-      <div class="job-circle-wrap">
-        <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
-          <circle class="job-circle-track" cx="28" cy="28" r="${R}"/>
-          <circle class="job-circle-fill"  cx="28" cy="28" r="${R}"
-            stroke-dasharray="${dash.toFixed(2)}"
-            stroke-dashoffset="${offset.toFixed(2)}"/>
-        </svg>
-        <div class="job-circle-label">
-          <span class="job-circle-pct">${circleLabel}</span>
-          ${circleStatusLabel ? `<span class="job-circle-status">${circleStatusLabel}</span>` : ''}
+        <div class="job-name">${esc(job.filename || id.slice(0,10))}</div>
+        <div class="job-sub">
+          <span class="src-badge src-${src}">${SRC_ICONS[src]||'⬇'} ${src}</span>
+          ${subItems.join('')}
         </div>
       </div>
-    </div>
-    <div class="job-badge-row">
-      <span class="job-badge b-${job.status}">${job.status}</span>
-      ${retryBadge}
+      <div class="job-right">
+        ${retryHTML}
+        <span class="job-pct">${pct}</span>
+        <span class="job-badge b-${job.status}">${job.status}</span>
+      </div>
     </div>
     <div class="job-progress">
-      <div class="job-progress-fill" style="width:${pct}%"></div>
+      <div class="job-progress-fill" style="width:${job.progress||0}%;${barStyle}"></div>
     </div>
     <div class="job-detail ${open}">
       <div class="job-actions">
@@ -1295,7 +1309,9 @@ function jobItemHTML(id, job) {
         ${job.started_at ? `<span class="job-time-info">▸ ${job.started_at}${job.finished_at ? ' · ✓ '+job.finished_at : ''}</span>` : ''}
       </div>
       <div class="log-wrap">
-        <div class="log-bar"><span class="log-bar-title">⬛ Output Log</span></div>
+        <div class="log-bar">
+          <span class="log-bar-title">⬛ Output Log</span>
+        </div>
         <div class="log-out" id="log-${id}">${renderLogHTML(job.log)}</div>
       </div>
     </div>`;
@@ -1304,87 +1320,44 @@ function jobItemHTML(id, job) {
 function updateJobItem(item, id, job) {
   item.className = `job-item is-${job.status}`;
 
-  // status icon
   const icon = item.querySelector('.job-status-icon');
   if (icon) {
     icon.className = `job-status-icon ${job.status}`;
     icon.textContent = STATUS_ICON[job.status] || '?';
   }
 
-  // filename (shouldn't change but just in case)
-  const nameEl = item.querySelector('.job-name');
-  if (nameEl) nameEl.textContent = job.filename || id.slice(0,12);
-
-  // transfer amounts
-  const recvStr  = job.downloaded_str || job.filesize_str || '';
-  const totalStr = job.filesize_str   || '';
-  let xferEl = item.querySelector('.job-transfer-row');
-  if (job.status === 'running' || job.status === 'done') {
-    if (!xferEl) {
-      xferEl = document.createElement('div');
-      xferEl.className = 'job-transfer-row';
-      const nameNode = item.querySelector('.job-name');
-      if (nameNode) nameNode.insertAdjacentElement('afterend', xferEl);
-    }
-    if (recvStr && totalStr && recvStr !== totalStr) {
-      xferEl.innerHTML = `<span class="job-recv">${esc(recvStr)}</span><span class="job-sep"> / </span><span class="job-total">${esc(totalStr)}</span>`;
-    } else if (totalStr) {
-      xferEl.innerHTML = `<span class="job-recv">${esc(totalStr)}</span>`;
-    }
-  }
-
-  // speed + eta
-  const metaEl = item.querySelector('.job-meta-row');
-  if (metaEl) {
-    const src = job.source_type || 'direct';
-    const parts = [];
-    if (job.speed) parts.push(`<span class="job-speed">⚡ ${esc(job.speed)}</span>`);
-    if (job.eta)   parts.push(`<span class="job-eta">⏱ ${esc(job.eta)}</span>`);
-    parts.push(`<span class="job-src-badge">${SRC_ICONS[src]||'⬇'} ${src}</span>`);
-    metaEl.innerHTML = parts.join('');
-  }
-
-  // circular progress
-  const pct = Math.min(100, Math.max(0, job.progress || 0));
-  const R = 22;
-  const C = 2 * Math.PI * R;
-  const offset = C - (pct / 100) * C;
-  const fillCircle = item.querySelector('.job-circle-fill');
-  if (fillCircle) {
-    fillCircle.setAttribute('stroke-dasharray', C.toFixed(2));
-    fillCircle.setAttribute('stroke-dashoffset', offset.toFixed(2));
-  }
-  const pctLabel = item.querySelector('.job-circle-pct');
-  if (pctLabel) {
-    pctLabel.textContent = job.status === 'queued' ? '…'
-      : job.status === 'done'      ? '✓'
-      : job.status === 'failed'    ? '✕'
-      : job.status === 'cancelled' ? '—'
-      : `${pct.toFixed(0)}%`;
-  }
-
-  // thin progress bar
-  const bar = item.querySelector('.job-progress-fill');
-  if (bar) bar.style.width = pct + '%';
-
-  // badge
   const badge = item.querySelector('.job-badge');
   if (badge) { badge.className = `job-badge b-${job.status}`; badge.textContent = job.status; }
 
-  // retry
-  const retryEl = item.querySelector('.retry-badge-inline');
-  if (job.retries > 0) {
-    if (retryEl) retryEl.textContent = `↻ ${job.retries}/${5}`;
-  } else if (retryEl) retryEl.remove();
+  const pctEl = item.querySelector('.job-pct');
+  if (pctEl) pctEl.textContent = job.progress > 0 ? `${job.progress.toFixed(0)}%` : '';
 
-  // log
+  const bar = item.querySelector('.job-progress-fill');
+  if (bar) {
+    bar.style.width = (job.progress || 0) + '%';
+    bar.style.background = job.status === 'failed' ? 'var(--red)'
+      : job.status === 'cancelled' ? 'var(--yellow)' : '';
+    bar.style.boxShadow = job.status === 'running' ? '0 0 12px rgba(0,229,255,0.5)' : '';
+  }
+
+  // sub info
+  const sub = item.querySelector('.job-sub');
+  if (sub) {
+    const subItems = [];
+    const src = job.source_type || 'direct';
+    subItems.push(`<span class="src-badge src-${src}">${SRC_ICONS[src]||'⬇'} ${src}</span>`);
+    if (job.speed) subItems.push(`<span class="speed">⚡ ${esc(job.speed)}</span>`);
+    if (job.eta)   subItems.push(`<span class="eta">ETA ${esc(job.eta)}</span>`);
+    if (job.filesize_str) subItems.push(`<span class="size">◈ ${esc(job.filesize_str)}</span>`);
+    sub.innerHTML = subItems.join('');
+  }
+
   const logEl = item.querySelector(`#log-${id}`);
   if (logEl && openDetails[id]) {
     logEl.innerHTML = renderLogHTML(job.log);
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  // stop button
   const actions = item.querySelector('.job-actions');
   if (actions) {
     const stopBtn = actions.querySelector('.stop-btn');
@@ -1587,26 +1560,6 @@ function confirmMegaPath() {
     toast('✓ Destination set: ' + sel);
   }
   closeMegaBrowser();
-}
-
-async function createMegaFolder() {
-  const base = (megaSelected || megaCurrentPath).replace(/\/$/, '');
-  const name = prompt('New folder name:');
-  if (!name || !name.trim()) return;
-  const newPath = base + '/' + name.trim();
-  try {
-    const data = await api('/mega/mkdir', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: newPath})
-    });
-    if (data.ok) {
-      toast('✓ Folder created: ' + name.trim());
-      await loadMegaDir(megaCurrentPath);
-    } else {
-      toast('✕ ' + (data.error || 'Failed to create folder'));
-    }
-  } catch(e) { toast('✕ Network error'); }
 }
 
 function getFileIcon(name) {
