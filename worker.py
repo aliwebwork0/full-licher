@@ -34,6 +34,19 @@ STALL_TIMEOUT  = 120
 CONNECT_TIMEOUT = 30
 
 
+def fmt_bytes(b):
+    b = float(b)
+    for unit in ['B','KB','MB','GB','TB']:
+        if b < 1024:
+            return f"{b:.1f} {unit}"
+        b /= 1024
+    return f"{b:.1f} PB"
+
+
+def fmt_bytes_speed(bps):
+    return fmt_bytes(bps) + "/s"
+
+
 def now():
     return datetime.utcnow().strftime("%H:%M:%S")
 
@@ -133,9 +146,9 @@ def build_direct_cmd(url, dest_path):
         f"-H 'Accept: */*' "
         f"-H 'Accept-Language: en-US,en;q=0.9' "
         f"-H 'Connection: keep-alive' "
-        f"--progress-bar "
+        f"--no-buffer "
         f"--fail "
-        f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
+        f"{safe_url} 2>&1 | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
     )
 
 
@@ -281,10 +294,36 @@ def run_job(job):
                         update_speed_history(spd, spd * 0.95)
                         continue
 
-                # curl progress
+                # curl --progress-bar lines look like:
+                # ######################################################################## 100.0%
+                # curl -# verbose lines:
+                # " 45 1234k   45  567k    0     0  234k      0  0:00:05  0:00:02  0:00:02  234k"
                 progress = parse_progress(line)
                 if progress is not None:
                     set_job(job_id, progress=progress)
+
+                # Try to parse curl verbose transfer line for speed + bytes
+                curl_match = re.match(
+                    r'\s*\d+\s+(\d+[kKmMgG]?)\s+\d+\s+(\d+[kKmMgG]?)\s+\d+\s+\d+\s+'
+                    r'(\d+[kKmMgG]?)\s+', line
+                )
+                if curl_match:
+                    def _parse_curl_size(s):
+                        s = s.strip()
+                        mul = {'k': 1024, 'm': 1024**2, 'g': 1024**3}
+                        if s and s[-1].lower() in mul:
+                            return float(s[:-1]) * mul[s[-1].lower()]
+                        return float(s) if s else 0
+                    total_b  = _parse_curl_size(curl_match.group(1))
+                    recv_b   = _parse_curl_size(curl_match.group(2))
+                    speed_b  = _parse_curl_size(curl_match.group(3))
+                    if speed_b > 0:
+                        spd_str = fmt_bytes_speed(speed_b)
+                        set_job(job_id, speed=spd_str,
+                                downloaded=int(recv_b),
+                                filesize=int(total_b) if total_b > 0 else None,
+                                filesize_str=fmt_bytes(total_b) if total_b > 0 else None)
+                        update_speed_history(speed_b, speed_b * 0.95)
 
                 if not is_progress_line(line):
                     clean = line.strip()

@@ -157,6 +157,27 @@ def mega_ls():
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/mega/mkdir", methods=["POST"])
+def mega_mkdir():
+    path = request.json.get("path", "").strip() if request.json else ""
+    if not path or not path.startswith("mega:/"):
+        return jsonify({"ok": False, "error": "Invalid path"})
+    import os
+    env = os.environ.copy()
+    env["RCLONE_CONFIG"] = "/root/.config/rclone/rclone.conf"
+    try:
+        result = subprocess.run(
+            ["rclone", "mkdir", path],
+            capture_output=True, text=True, timeout=20, env=env
+        )
+        if result.returncode == 0:
+            return jsonify({"ok": True})
+        else:
+            return jsonify({"ok": False, "error": result.stderr.strip()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @app.route("/probe")
 def probe_url():
     url = request.args.get("url", "").strip()
