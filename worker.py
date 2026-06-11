@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import threading
 import subprocess
 import shlex
@@ -96,34 +97,49 @@ def detect_source_type(url):
 # ---------------------------------------------------------------------------
 # rclone copyurl progress parser
 #
-# rclone --progress output looks like:
-#   Transferred:   45.678 MiB / 123.456 MiB, 37%, 2.345 MiB/s, ETA 33s
-#   Transferred:   1 / 1, 100%
-#   Elapsed time: 12.3s
 # ---------------------------------------------------------------------------
-RCLONE_XFER_RE = re.compile(
-    r'Transferred:\s+'
-    r'([\d.]+\s*\S+)\s*/\s*([\d.]+\s*\S+),\s*'
-    r'(\d+)%'
-    r'(?:,\s*([\d.]+\s*\S+/s))?'
-    r'(?:,\s*ETA\s*(\S+))?'
-)
+# rclone --use-json-log output (one JSON object per line, no \r buffering):
+# {"level":"info","msg":"Transferred: 45.678 MiB / 1.656 GiB, 3%, 4.5 MiB/s, ETA 6m15s","time":"...","stats":{...}}
+# stats keys: bytes, totalBytes, speed (bytes/s), eta (seconds), percentage
+# ---------------------------------------------------------------------------
 
-
-def parse_rclone_progress(line):
+def parse_rclone_json(line):
     """
+    Parse a rclone --use-json-log line.
     Returns (pct, recv_str, total_str, speed_str, eta_str) or None.
-    pct is an int 0-100.
     """
-    m = RCLONE_XFER_RE.search(line)
-    if m:
-        recv_str  = m.group(1).strip()
-        total_str = m.group(2).strip()
-        pct       = int(m.group(3))
-        speed_str = (m.group(4) or "").strip()
-        eta_str   = (m.group(5) or "").strip()
-        return pct, recv_str, total_str, speed_str, eta_str
-    return None
+    try:
+        obj = json.loads(line)
+    except Exception:
+        return None
+    stats = obj.get("stats")
+    if not stats:
+        return None
+    total = stats.get("totalBytes", 0) or 0
+    recv  = stats.get("bytes", 0) or 0
+    speed = stats.get("speed", 0) or 0        # bytes/s float
+    pct   = int(stats.get("percentage", 0) or 0)
+    eta_s = stats.get("eta")                  # seconds int or null
+
+    recv_str  = fmt_bytes(recv)
+    total_str = fmt_bytes(total) if total else ""
+    speed_str = fmt_bytes_speed(speed) if speed else ""
+    eta_str   = _fmt_eta(eta_s)
+    return pct, recv_str, total_str, speed_str, eta_str
+
+
+def _fmt_eta(seconds):
+    if seconds is None or seconds < 0:
+        return ""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        return f"{seconds//60}m{seconds%60}s"
+    else:
+        h = seconds // 3600
+        m = (seconds % 3600) // 60
+        return f"{h}h{m}m"
 
 
 def parse_rclone_speed_bytes(speed_str):
@@ -215,9 +231,8 @@ def build_direct_cmd(url, dest_path):
     return (
         f"RCLONE_CONFIG={rclone_cfg} "
         f"rclone copyurl {safe_url} {safe_dest} "
-        f"--progress "
+        f"--use-json-log "
         f"--stats 1s "
-        f"--stats-one-line "
         f"--header 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' "
         f"--header 'Referer: {referer}' "
         f"--retries 3 "
@@ -296,29 +311,27 @@ def run_job(job):
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
-                env=env,
+                env={**env, "PYTHONUNBUFFERED": "1"},
                 start_new_session=True,
-                bufsize=1,          # line-buffered
+                bufsize=0,
             )
 
             with processes_lock:
                 processes[job_id] = p
 
-            buf = ''
-            for raw in p.stdout:
+            buf = b''
+            while True:
+                ch = p.stdout.read(1)
+                if not ch:
+                    break
                 if is_cancelled(job_id):
                     kill_job_process(job_id)
                     append_log(job_id, f"[{now()}] Cancelled mid-transfer.\n")
                     return
 
-                # rclone uses \r to overwrite progress lines — split on both
-                buf += raw
-                parts = re.split(r'[\r\n]', buf)
-                buf = parts[-1]  # keep incomplete last chunk
-
-                for line in parts[:-1]:
-                    line = line.strip()
+                if ch in (b'\r', b'\n'):
+                    line = buf.decode('utf-8', errors='replace').strip()
+                    buf = b''
                     if not line:
                         continue
 
@@ -329,14 +342,12 @@ def run_job(job):
                             set_job(job_id, progress=pct, speed=speed_str or "", eta=eta_str or "")
                             if size_str:
                                 set_job(job_id, filesize_str=size_str)
-                            spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                            update_speed_history(spd, 0)
                             continue
                         append_log(job_id, f"[{now()}] {line}\n")
                         continue
 
-                    # ── rclone copyurl progress ──────────────────────────────
-                    result = parse_rclone_progress(line)
+                    # ── rclone JSON log ──────────────────────────────────────
+                    result = parse_rclone_json(line)
                     if result is not None:
                         pct, recv_str, total_str, speed_str, eta_str = result
                         set_job(job_id, progress=pct,
@@ -344,12 +355,19 @@ def run_job(job):
                                 eta=eta_str,
                                 filesize_str=total_str,
                                 downloaded_str=recv_str)
-                        spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                        update_speed_history(spd, spd)
                         continue
 
-                    # ── everything else → log ────────────────────────────────
-                    append_log(job_id, f"[{now()}] {line}\n")
+                    # ── سایر پیام‌های JSON → فقط msg رو لاگ کن ────────────
+                    try:
+                        obj = json.loads(line)
+                        msg = obj.get("msg", "")
+                        lvl = obj.get("level", "")
+                        if msg and lvl not in ("debug",):
+                            append_log(job_id, f"[{now()}] {msg}\n")
+                    except Exception:
+                        append_log(job_id, f"[{now()}] {line}\n")
+                else:
+                    buf += ch
 
             p.wait()
 
