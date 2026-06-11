@@ -119,6 +119,7 @@ def build_direct_cmd(url, dest_path):
     safe_url  = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
     referer   = get_referer(url)
+    rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
 
     return (
         f"curl -L "
@@ -134,13 +135,14 @@ def build_direct_cmd(url, dest_path):
         f"-H 'Connection: keep-alive' "
         f"--progress-bar "
         f"--fail "
-        f"{safe_url} | rclone rcat {safe_dest}"
+        f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
     )
 
 
 def build_ytdlp_cmd(url, dest_path, quality="best"):
     safe_url  = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
+    rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
 
     fmt = "bestvideo+bestaudio/best"
     if quality == "1080p":
@@ -152,12 +154,21 @@ def build_ytdlp_cmd(url, dest_path, quality="best"):
     elif quality == "audio":
         fmt = "bestaudio/best"
 
+    # yt-dlp merges video+audio via ffmpeg into mkv/mp4 to a temp file,
+    # then rclone uploads it. Avoids broken pipe from simultaneous pipe+merge.
+    tmp = f"/tmp/ytdl_{os.getpid()}.%(ext)s"
+    safe_tmp_pattern = shlex.quote(tmp)
+    # We use a shell script: download to tmp, then rcat, then cleanup
     return (
-        f"yt-dlp -f {shlex.quote(fmt)} "
-        f"--no-playlist "
-        f"--newline "
-        f"-o - "
-        f"{safe_url} | rclone rcat {safe_dest}"
+        f"set -e; "
+        f"OUTFILE=$(yt-dlp -f {shlex.quote(fmt)} "
+        f"--no-playlist --newline "
+        f"--merge-output-format mp4 "
+        f"-o {safe_tmp_pattern} "
+        f"--print after_move:filepath "
+        f"{safe_url}); "
+        f"RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest} < \"$OUTFILE\"; "
+        f"rm -f \"$OUTFILE\""
     )
 
 
