@@ -882,7 +882,7 @@ select { padding-left: 13px; background-image: none; }
           <span class="input-ico">⊕</span>
           <input type="url" id="iUrl" placeholder="https://..." autocomplete="off"
                  oninput="onUrlInput()" onpaste="onUrlPaste(event)">
-          <button class="input-action" onclick="probeUrl()" id="probeBtn" title="Probe URL">inspect</button>
+          <span class="input-action probe-status" id="probeStatus" style="display:none"></span>
         </div>
       </div>
 
@@ -968,6 +968,7 @@ select { padding-left: 13px; background-image: none; }
     </div>
     <div class="modal-footer">
       <div class="modal-selected-path" id="modalSelectedPath">No folder selected</div>
+      <button class="btn-sm" onclick="createMegaFolder()" style="flex-shrink:0">+ New Folder</button>
       <button class="btn-confirm" onclick="confirmMegaPath()">Select →</button>
     </div>
   </div>
@@ -1059,6 +1060,17 @@ function onUrlInput() {
   } else if (url.includes('instagram.com')) {
     setSourceTab('instagram');
   }
+  // auto-probe after pause
+  clearTimeout(probeTimer);
+  const status = document.getElementById('probeStatus');
+  if (!url) {
+    document.getElementById('probeInfo').classList.remove('visible');
+    status.style.display = 'none';
+    return;
+  }
+  status.style.display = 'inline';
+  status.textContent = '…';
+  probeTimer = setTimeout(probeUrl, 800);
 }
 
 function onUrlPaste(e) {
@@ -1069,6 +1081,7 @@ async function probeUrl() {
   const url = document.getElementById('iUrl').value.trim();
   if (!url) return;
   const info = document.getElementById('probeInfo');
+  const status = document.getElementById('probeStatus');
   info.classList.remove('visible');
   try {
     const data = await api('/probe?url=' + encodeURIComponent(url));
@@ -1079,8 +1092,15 @@ async function probeUrl() {
       if (data.source_type === 'youtube') setSourceTab('youtube');
       if (data.source_type === 'instagram') setSourceTab('instagram');
       info.classList.add('visible');
+      status.textContent = '✓';
+      setTimeout(() => { status.style.display = 'none'; }, 1500);
+    } else {
+      status.textContent = '—';
+      setTimeout(() => { status.style.display = 'none'; }, 1500);
     }
-  } catch(e) {}
+  } catch(e) {
+    status.style.display = 'none';
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1560,6 +1580,26 @@ function confirmMegaPath() {
     toast('✓ Destination set: ' + sel);
   }
   closeMegaBrowser();
+}
+
+async function createMegaFolder() {
+  const base = (megaSelected || megaCurrentPath).replace(/\/$/, '');
+  const name = prompt('New folder name:');
+  if (!name || !name.trim()) return;
+  const newPath = base + '/' + name.trim();
+  try {
+    const data = await api('/mega/mkdir', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: newPath})
+    });
+    if (data.ok) {
+      toast('✓ Folder created: ' + name.trim());
+      await loadMegaDir(megaCurrentPath);
+    } else {
+      toast('✕ ' + (data.error || 'Failed to create folder'));
+    }
+  } catch(e) { toast('✕ Network error'); }
 }
 
 function getFileIcon(name) {
