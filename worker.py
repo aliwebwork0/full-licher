@@ -47,6 +47,19 @@ def fmt_bytes_speed(bps):
     return fmt_bytes(bps) + "/s"
 
 
+def parse_size_str(s):
+    """Convert '1.656 GiB', '512 MiB', '320 KiB' → bytes int."""
+    if not s:
+        return 0
+    m = re.search(r'([\d.]+)\s*([KMGT]i?B?|B)', s, re.IGNORECASE)
+    if not m:
+        return 0
+    val = float(m.group(1))
+    unit = m.group(2).upper().rstrip('B').rstrip('I')
+    mul = {'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4}.get(unit, 1)
+    return int(val * mul)
+
+
 def now():
     return datetime.utcnow().strftime("%H:%M:%S")
 
@@ -292,43 +305,51 @@ def run_job(job):
             with processes_lock:
                 processes[job_id] = p
 
-            for line in p.stdout:
+            buf = ''
+            for raw in p.stdout:
                 if is_cancelled(job_id):
                     kill_job_process(job_id)
                     append_log(job_id, f"[{now()}] Cancelled mid-transfer.\n")
                     return
 
-                # ── yt-dlp progress ──────────────────────────────────────
-                if source_type in ("youtube", "instagram"):
-                    pct, size_str, speed_str, eta_str = parse_ytdlp_progress(line)
-                    if pct is not None:
-                        set_job(job_id, progress=pct, speed=speed_str or "", eta=eta_str or "")
-                        if size_str:
-                            set_job(job_id, filesize_str=size_str)
+                # rclone uses \r to overwrite progress lines — split on both
+                buf += raw
+                parts = re.split(r'[\r\n]', buf)
+                buf = parts[-1]  # keep incomplete last chunk
+
+                for line in parts[:-1]:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # ── yt-dlp progress ──────────────────────────────────────
+                    if source_type in ("youtube", "instagram"):
+                        pct, size_str, speed_str, eta_str = parse_ytdlp_progress(line)
+                        if pct is not None:
+                            set_job(job_id, progress=pct, speed=speed_str or "", eta=eta_str or "")
+                            if size_str:
+                                set_job(job_id, filesize_str=size_str)
+                            spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
+                            update_speed_history(spd, 0)
+                            continue
+                        append_log(job_id, f"[{now()}] {line}\n")
+                        continue
+
+                    # ── rclone copyurl progress ──────────────────────────────
+                    result = parse_rclone_progress(line)
+                    if result is not None:
+                        pct, recv_str, total_str, speed_str, eta_str = result
+                        set_job(job_id, progress=pct,
+                                speed=speed_str,
+                                eta=eta_str,
+                                filesize_str=total_str,
+                                downloaded_str=recv_str)
                         spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                        update_speed_history(spd, 0)   # yt-dlp = download only
-                        add_bytes_done(int(spd), 0)
-                        continue  # don't log raw progress lines
+                        update_speed_history(spd, spd)
+                        continue
 
-                # ── rclone copyurl progress ──────────────────────────────
-                result = parse_rclone_progress(line)
-                if result is not None:
-                    pct, recv_str, total_str, speed_str, eta_str = result
-                    set_job(job_id, progress=pct,
-                            speed=speed_str,
-                            eta=eta_str,
-                            filesize_str=total_str,
-                            downloaded_str=recv_str)
-                    spd = parse_rclone_speed_bytes(speed_str) if speed_str else 0.0
-                    # copyurl handles download+upload in one pass → count both directions
-                    update_speed_history(spd, spd)
-                    add_bytes_done(int(spd), int(spd))
-                    continue  # don't echo raw stats lines to log
-
-                # ── everything else → log ────────────────────────────────
-                clean = line.strip()
-                if clean:
-                    append_log(job_id, f"[{now()}] {clean}\n")
+                    # ── everything else → log ────────────────────────────────
+                    append_log(job_id, f"[{now()}] {line}\n")
 
             p.wait()
 
@@ -344,8 +365,13 @@ def run_job(job):
                         finished_at=now(), speed="", eta="")
                 append_log(job_id, f"[{now()}] ✓ Transfer complete.\n")
                 update_speed_history(0, 0)
+                # count actual bytes transferred (from last known filesize)
+                with jobs_lock:
+                    fs = jobs.get(job_id, {}).get("filesize_str", "")
+                actual_bytes = parse_size_str(fs)
                 with stats_lock:
                     session_stats["jobs_done"] += 1
+                    session_stats["total_uploaded_bytes"] += actual_bytes
                 return
             else:
                 append_log(job_id, f"[{now()}] ✗ Failed (exit {p.returncode}) — attempt {attempt}/{MAX_RETRIES}\n")
