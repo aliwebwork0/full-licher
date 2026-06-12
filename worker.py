@@ -15,16 +15,32 @@ processes_lock = threading.Lock()
 
 # Session-wide stats
 session_stats = {
-    "total_downloaded_bytes": 0,
-    "total_uploaded_bytes": 0,
+    "total_transferred_bytes": 0,
     "jobs_done": 0,
     "jobs_failed": 0,
     "current_speed_dl": 0,
     "current_speed_ul": 0,
-    "history_dl": [],   # last 30 data points (bytes/s)
+    "history_dl": [],
     "history_ul": [],
 }
 stats_lock = threading.Lock()
+
+
+def _parse_size_str(s):
+    """Parse human-readable size string like '123.4MiB' or '1.2GiB' → bytes"""
+    if not s:
+        return 0
+    s = s.strip()
+    m = re.search(r'([\d.]+)\s*([KkMmGg]i?B?)', s)
+    if not m:
+        return 0
+    try:
+        v = float(m.group(1))
+        u = m.group(2)[0].upper()
+        mul = {"K": 1024, "M": 1024**2, "G": 1024**3}.get(u, 1)
+        return int(v * mul)
+    except Exception:
+        return 0
 
 RCLONE_CONFIG_PATH = "/root/.config/rclone/rclone.conf"
 
@@ -226,6 +242,19 @@ def run_job(job):
     append_log(job_id, f"[{now()}] Starting: {filename}\n")
     append_log(job_id, f"[{now()}] Source: {source_type.upper()} → {dest_path}\n")
 
+    # For direct downloads, try a quick HEAD to get content-length
+    if source_type == "direct":
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, method="HEAD")
+            req.add_header("User-Agent", "Mozilla/5.0")
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                cl = resp.headers.get("Content-Length")
+                if cl and cl.isdigit() and int(cl) > 0:
+                    set_job(job_id, filesize=int(cl))
+        except Exception:
+            pass
+
     if source_type in ("youtube", "instagram"):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
     else:
@@ -304,8 +333,16 @@ def run_job(job):
                 set_job(job_id, status="done", progress=100, finished_at=now(), speed="", eta="")
                 append_log(job_id, f"[{now()}] ✓ Transfer complete.\n")
                 update_speed_history(0, 0)
+                # Track transferred bytes from filesize
+                with jobs_lock:
+                    job_snapshot = dict(jobs.get(job_id, {}))
                 with stats_lock:
                     session_stats["jobs_done"] += 1
+                    fs = job_snapshot.get("filesize")
+                    if fs and isinstance(fs, (int, float)) and fs > 0:
+                        session_stats["total_transferred_bytes"] += int(fs)
+                    elif job_snapshot.get("filesize_str"):
+                        session_stats["total_transferred_bytes"] += _parse_size_str(job_snapshot["filesize_str"])
                 return
             else:
                 append_log(job_id, f"[{now()}] ✗ Failed (exit {p.returncode}) — attempt {attempt}/{MAX_RETRIES}\n")
