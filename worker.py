@@ -163,11 +163,12 @@ def detect_source_type(url):
     return "direct"
 
 
-def build_direct_cmd(url, dest_path):
+def build_direct_cmd(url, dest_path, progress_file):
     safe_url  = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
     referer   = get_referer(url)
     rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
+    safe_prog = shlex.quote(progress_file)
 
     return (
         f"curl -g -L "
@@ -181,9 +182,8 @@ def build_direct_cmd(url, dest_path):
         f"-H 'Accept: */*' "
         f"-H 'Accept-Language: en-US,en;q=0.9' "
         f"-H 'Connection: keep-alive' "
-        f"--progress-bar "
         f"--fail "
-        f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
+        f"{safe_url} 2>{safe_prog} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
     )
 
 
@@ -234,7 +234,75 @@ def kill_job_process(job_id):
                 pass
 
 
-def is_cancelled(job_id):
+RCLONE_TABLE_RE = re.compile(
+    r'^\s*(\d+)\s+([\d.]+[KMGTkmgt]?)\s+\d+\s+([\d.]+[KMGTkmgt]?)\s+\d+\s+\d+\s+([\d.]+[KMGTkmgt]?)'
+)
+
+
+def parse_curl_table_row(line):
+    """Parse one row of curl's classic progress table:
+    % Total  % Received % Xferd  Average Speed  Time Time Time  Current
+                                  Dload  Upload   Total Spent  Left  Speed
+    Returns dict or None."""
+    m = RCLONE_TABLE_RE.match(line)
+    if not m:
+        return None
+    pct_val = int(m.group(1))
+    total_s = m.group(2)
+    spent_s = m.group(3)
+    speed_s = m.group(4)
+    try:
+        spd_b = _parse_size_str(speed_s + "B")
+        tot_b = _parse_size_str(total_s + "B")
+        spt_b = _parse_size_str(spent_s + "B")
+        left_b = max(0, tot_b - spt_b)
+        left_secs = int(left_b / spd_b) if spd_b else 0
+        left_str = f"{left_secs//60}m{left_secs%60:02d}s" if left_secs > 0 else "—"
+    except Exception:
+        spd_b = 0
+        left_str = "—"
+    return {
+        "pct": pct_val,
+        "total": total_s,
+        "spent": spent_s,
+        "left": left_str,
+        "speed": speed_s + "/s",
+        "speed_bytes": spd_b,
+    }
+
+
+def tail_progress_file(job_id, path, stop_event):
+    """Poll the curl progress file and push the latest table row into the
+    job state every ~0.4s, so the UI shows the same live table the user
+    sees in the Railway console."""
+    last_row = None
+    while not stop_event.is_set():
+        try:
+            with open(path, "r", errors="ignore") as f:
+                data = f.read()
+        except Exception:
+            data = ""
+        if data:
+            chunks = re.split(r'[\r\n]+', data)
+            for chunk in reversed(chunks):
+                row = parse_curl_table_row(chunk)
+                if row:
+                    if row != last_row:
+                        last_row = row
+                        set_job(job_id,
+                            progress=row["pct"],
+                            rclone_progress={
+                                "pct":   row["pct"],
+                                "total": row["total"],
+                                "spent": row["spent"],
+                                "left":  row["left"],
+                                "speed": row["speed"],
+                            },
+                            speed=row["speed"]
+                        )
+                        update_speed_history(row["speed_bytes"], 0)
+                    break
+        stop_event.wait(0.4)
     with jobs_lock:
         return jobs.get(job_id, {}).get("status") == "cancelled"
 
@@ -290,8 +358,10 @@ def run_job(job):
 
     if source_type in ("youtube", "instagram"):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
+        progress_file = None
     else:
-        cmd = build_direct_cmd(url, dest_path)
+        progress_file = f"/tmp/curlprog_{job_id}.log"
+        cmd = build_direct_cmd(url, dest_path, progress_file)
 
     append_log(job_id, f"[{now()}] CMD: {cmd[:200]}{'...' if len(cmd)>200 else ''}\n")
 
@@ -317,12 +387,25 @@ def run_job(job):
             with processes_lock:
                 processes[job_id] = p
 
+            tail_stop = threading.Event()
+            tail_thread = None
+            if progress_file:
+                try:
+                    open(progress_file, "a").close()
+                except Exception:
+                    pass
+                tail_thread = threading.Thread(
+                    target=tail_progress_file, args=(job_id, progress_file, tail_stop), daemon=True
+                )
+                tail_thread.start()
+
             last_dl_bytes = 0
             last_speed = 0.0
 
             for line in iter_stream_lines(p.stdout):
                 if is_cancelled(job_id):
                     kill_job_process(job_id)
+                    tail_stop.set()
                     append_log(job_id, f"[{now()}] Cancelled mid-transfer.\n")
                     return
 
@@ -401,6 +484,12 @@ def run_job(job):
                         append_log(job_id, f"[{now()}] {clean}\n")
 
             p.wait()
+            tail_stop.set()
+            if progress_file:
+                try:
+                    os.remove(progress_file)
+                except Exception:
+                    pass
 
             with processes_lock:
                 processes.pop(job_id, None)
@@ -437,6 +526,8 @@ def run_job(job):
                         time.sleep(0.5)
 
         except Exception as e:
+            if 'tail_stop' in dir():
+                tail_stop.set()
             with processes_lock:
                 processes.pop(job_id, None)
             append_log(job_id, f"[{now()}] Exception: {e} — attempt {attempt}/{MAX_RETRIES}\n")
