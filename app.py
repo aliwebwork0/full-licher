@@ -162,32 +162,59 @@ def probe_url():
     url = request.args.get("url", "").strip()
     if not url:
         return jsonify({"ok": False})
+
+    source_type = "direct"
+    if any(x in url for x in ["youtube.com", "youtu.be"]):
+        source_type = "youtube"
+    elif "instagram.com" in url:
+        source_type = "instagram"
+
+    def parse_headers(stdout):
+        headers = {}
+        for line in stdout.splitlines():
+            if ":" in line and not line.startswith("HTTP"):
+                k, _, v = line.partition(":")
+                headers[k.strip().lower()] = v.strip()
+        return headers
+
     try:
+        # Primary: HEAD with -g -L (handles encoded URLs & redirects)
         result = subprocess.run(
-            ["curl", "-sI", "--max-time", "10", "-L",
-             "-H", "User-Agent: Mozilla/5.0",
+            ["curl", "-sI", "--max-time", "10", "-g", "-L",
+             "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+             "-H", "Accept: */*",
              url],
             capture_output=True, text=True, timeout=15
         )
-        headers = {}
-        for line in result.stdout.splitlines():
-            if ":" in line:
-                k, _, v = line.partition(":")
-                headers[k.strip().lower()] = v.strip()
-
+        headers = parse_headers(result.stdout)
         size = None
         raw = headers.get("content-length")
-        if raw and raw.isdigit():
+        if raw and raw.isdigit() and int(raw) > 0:
             size = int(raw)
-
         ctype = headers.get("content-type", "")
 
-        # detect yt-dlp sources
-        source_type = "direct"
-        if any(x in url for x in ["youtube.com", "youtu.be"]):
-            source_type = "youtube"
-        elif "instagram.com" in url:
-            source_type = "instagram"
+        # Fallback: GET Range: bytes=0-0 to get Content-Range total
+        if not size:
+            result2 = subprocess.run(
+                ["curl", "-s", "--max-time", "10", "-g", "-L",
+                 "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                 "-H", "Accept: */*",
+                 "-H", "Range: bytes=0-0",
+                 "-I", url],
+                capture_output=True, text=True, timeout=15
+            )
+            h2 = parse_headers(result2.stdout)
+            cr = h2.get("content-range", "")
+            if cr and "/" in cr:
+                total_str = cr.split("/")[-1].strip()
+                if total_str.isdigit() and int(total_str) > 0:
+                    size = int(total_str)
+            if not size:
+                raw2 = h2.get("content-length")
+                if raw2 and raw2.isdigit() and int(raw2) > 0:
+                    size = int(raw2)
+            if not ctype:
+                ctype = h2.get("content-type", "")
 
         return jsonify({"ok": True, "size": size, "content_type": ctype, "source_type": source_type})
     except Exception as e:

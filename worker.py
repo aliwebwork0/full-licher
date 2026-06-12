@@ -238,7 +238,8 @@ def run_job(job):
     dest_path = f"{dest}/{filename}"
 
     set_job(job_id, status="running", log="", progress=0, retries=0,
-            started_at=now(), source_type=source_type, speed="", eta="")
+            started_at=now(), source_type=source_type, speed="", eta="",
+            rclone_progress=None)
     append_log(job_id, f"[{now()}] Starting: {filename}\n")
     append_log(job_id, f"[{now()}] Source: {source_type.upper()} → {dest_path}\n")
 
@@ -259,6 +260,8 @@ def run_job(job):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
     else:
         cmd = build_direct_cmd(url, dest_path)
+
+    append_log(job_id, f"[{now()}] CMD: {cmd[:200]}{'...' if len(cmd)>200 else ''}\n")
 
     env = os.environ.copy()
     env["RCLONE_CONFIG"] = RCLONE_CONFIG_PATH
@@ -309,6 +312,40 @@ def run_job(job):
                                 spd = v * mul
                         update_speed_history(spd, spd * 0.95)
                         continue
+
+                # rclone progress table parsing
+                # Lines look like: "  45  1.34G  45  625.0M  0  0  85.34M"
+                rclone_match = re.match(
+                    r'^\s*(\d+)\s+([\d.]+[KMGT]?)\s+(\d+)\s+([\d.]+[KMGT]?)\s+\d+\s+\d+\s+([\d.]+[KMGT]?)\s*$',
+                    line
+                )
+                if rclone_match:
+                    pct_val = int(rclone_match.group(1))
+                    total_s = rclone_match.group(2)
+                    spent_s = rclone_match.group(4)
+                    speed_s = rclone_match.group(5)
+                    # estimate left
+                    try:
+                        spd_b = _parse_size_str(speed_s + "B") or 1
+                        tot_b = _parse_size_str(total_s + "B")
+                        spt_b = _parse_size_str(spent_s + "B")
+                        left_b = max(0, tot_b - spt_b)
+                        left_secs = int(left_b / spd_b) if spd_b else 0
+                        left_str = f"{left_secs//60}m{left_secs%60:02d}s" if left_secs > 0 else "—"
+                    except Exception:
+                        left_str = "—"
+                    set_job(job_id,
+                        progress=pct_val,
+                        rclone_progress={
+                            "pct": pct_val,
+                            "total": total_s,
+                            "spent": spent_s,
+                            "left": left_str,
+                            "speed": speed_s + "/s"
+                        },
+                        speed=speed_s + "/s"
+                    )
+                    continue
 
                 # curl progress
                 progress = parse_progress(line)
