@@ -307,6 +307,11 @@ def tail_progress_file(job_id, path, stop_event):
         return jobs.get(job_id, {}).get("status") == "cancelled"
 
 
+def is_cancelled(job_id):
+    with jobs_lock:
+        return jobs.get(job_id, {}).get("status") == "cancelled"
+
+
 def update_speed_history(speed_dl, speed_ul):
     with stats_lock:
         session_stats["current_speed_dl"] = speed_dl
