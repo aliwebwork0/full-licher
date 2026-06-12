@@ -18,6 +18,8 @@ def start():
     filename = request.form.get("filename", "").strip()
     dest     = request.form.get("dest", "mega:/Video").strip()
     quality  = request.form.get("quality", "best").strip()
+    referer  = request.form.get("referer", "").strip()
+    cookie   = request.form.get("cookie", "").strip()
 
     if not url or not filename:
         return jsonify({"error": "URL and filename are required"}), 400
@@ -42,9 +44,11 @@ def start():
             "speed":       "",
             "eta":         "",
             "source_type": "direct",
+            "referer":     referer,
+            "cookie":      cookie,
         }
 
-    job_queue.put({"id": job_id, "url": url, "filename": filename, "dest": dest, "quality": quality})
+    job_queue.put({"id": job_id, "url": url, "filename": filename, "dest": dest, "quality": quality, "referer": referer, "cookie": cookie})
     return jsonify({"job_id": job_id})
 
 

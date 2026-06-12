@@ -131,11 +131,15 @@ def detect_source_type(url):
     return "direct"
 
 
-def build_direct_cmd(url, dest_path):
+def build_direct_cmd(url, dest_path, custom_referer="", custom_cookie=""):
     safe_url  = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
-    referer   = get_referer(url)
+    referer   = custom_referer.strip() or get_referer(url)
     rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
+
+    extra_headers = ""
+    if custom_cookie.strip():
+        extra_headers += f"-H {shlex.quote('Cookie: ' + custom_cookie.strip())} "
 
     return (
         f"curl -L "
@@ -145,10 +149,11 @@ def build_direct_cmd(url, dest_path):
         f"--keepalive-time 30 "
         f"--max-time 0 "
         f"-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' "
-        f"-H 'Referer: {referer}' "
+        f"-H {shlex.quote('Referer: ' + referer)} "
         f"-H 'Accept: */*' "
         f"-H 'Accept-Language: en-US,en;q=0.9' "
         f"-H 'Connection: keep-alive' "
+        f"{extra_headers}"
         f"--progress-bar "
         f"--fail "
         f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
@@ -258,7 +263,7 @@ def run_job(job):
     if source_type in ("youtube", "instagram"):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
     else:
-        cmd = build_direct_cmd(url, dest_path)
+        cmd = build_direct_cmd(url, dest_path, job.get("referer", ""), job.get("cookie", ""))
 
     env = os.environ.copy()
     env["RCLONE_CONFIG"] = RCLONE_CONFIG_PATH
