@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import threading
 import subprocess
 import shlex
@@ -131,40 +132,26 @@ def detect_source_type(url):
     return "direct"
 
 
-import logins
-
-
-def build_direct_cmd(url, dest_path, jar_path=""):
+def build_direct_cmd(url, dest_path):
     safe_url  = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
     referer   = get_referer(url)
     rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
 
-    cookie_opt = ""
-    if jar_path:
-        safe_jar = shlex.quote(jar_path)
-        cookie_opt = f"-b {safe_jar} "
+    # curl-impersonate-chrome: mimics Chrome's TLS/JA3 fingerprint and HTTP/2
+    # header order, which real curl cannot replicate. Falls back to regular
+    # curl if the binary isn't installed.
+    curl_bin = "curl_chrome116" if shutil.which("curl_chrome116") else "curl"
+    extra = "" if curl_bin != "curl" else "--http2 "
 
     return (
-        f"curl -g -L --http2 "
+        f"{curl_bin} -g -L {extra}"
         f"--connect-timeout {CONNECT_TIMEOUT} "
         f"--retry 3 --retry-delay 5 --retry-all-errors "
         f"--speed-limit 1 --speed-time {STALL_TIMEOUT} "
         f"--keepalive-time 30 "
         f"--max-time 0 "
-        f"-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' "
         f"-H {shlex.quote('Referer: ' + referer)} "
-        f"-H 'Accept: */*' "
-        f"-H 'Accept-Language: en-US,en;q=0.9' "
-        f"-H 'Accept-Encoding: identity' "
-        f"-H 'Connection: keep-alive' "
-        f"-H 'Sec-Fetch-Dest: video' "
-        f"-H 'Sec-Fetch-Mode: no-cors' "
-        f"-H 'Sec-Fetch-Site: cross-site' "
-        f"-H 'Sec-Ch-Ua: \"Chromium\";v=\"125\", \"Google Chrome\";v=\"125\", \"Not.A/Brand\";v=\"24\"' "
-        f"-H 'Sec-Ch-Ua-Mobile: ?0' "
-        f"-H 'Sec-Ch-Ua-Platform: \"Windows\"' "
-        f"{cookie_opt}"
         f"--progress-bar "
         f"--fail "
         f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
@@ -271,16 +258,10 @@ def run_job(job):
         except Exception:
             pass
 
-    jar_path = ""
-    if source_type == "direct":
-        jar_path = logins.find_jar_for_url(url) or ""
-        if jar_path:
-            append_log(job_id, f"[{now()}] Using saved login session for {logins.get_domain(url)}\n")
-
     if source_type in ("youtube", "instagram"):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
     else:
-        cmd = build_direct_cmd(url, dest_path, jar_path)
+        cmd = build_direct_cmd(url, dest_path)
 
     env = os.environ.copy()
     env["RCLONE_CONFIG"] = RCLONE_CONFIG_PATH
