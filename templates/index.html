@@ -142,7 +142,7 @@ header {
    STAT STRIP
 ══════════════════════════════════════ */
 .stats-totals {
-  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  display: grid; grid-template-columns: 1fr 1fr;
   gap: 2px;
   background: var(--border);
   border: 1px solid var(--border);
@@ -799,12 +799,8 @@ select { padding-left: 14px; }
   <!-- ── STAT STRIP ── -->
   <div class="stats-totals anim-fadeup" style="animation-delay:.05s">
     <div class="stat-cell">
-      <div class="stat-cell-label">Downloaded</div>
-      <div class="stat-cell-val cyan" id="totalDl">0 B</div>
-    </div>
-    <div class="stat-cell">
-      <div class="stat-cell-label">Uploaded</div>
-      <div class="stat-cell-val green" id="totalUl">0 B</div>
+      <div class="stat-cell-label">Transferred</div>
+      <div class="stat-cell-val cyan" id="totalTransferred">0 B</div>
     </div>
     <div class="stat-cell">
       <div class="stat-cell-label">Completed</div>
@@ -1121,8 +1117,7 @@ async function loadJobs() {
 async function loadStats() {
   try {
     const data = await api('/stats');
-    document.getElementById('totalDl').textContent   = fmtBytes(data.total_downloaded_bytes || 0);
-    document.getElementById('totalUl').textContent   = fmtBytes(data.total_uploaded_bytes || 0);
+    document.getElementById('totalTransferred').textContent = fmtBytes(data.total_transferred_bytes || 0);
     document.getElementById('totalJobs').textContent = (data.jobs_done || 0) + ' / ' + ((data.jobs_done || 0) + (data.jobs_failed || 0));
   } catch(e) {}
 }
