@@ -3,7 +3,6 @@ import uuid
 import subprocess
 import shlex
 from worker import job_queue, jobs, jobs_lock, processes, processes_lock, session_stats, stats_lock
-import logins
 
 app = Flask(__name__)
 
@@ -11,47 +10,6 @@ app = Flask(__name__)
 @app.route("/")
 def home():
     return render_template("index.html")
-
-
-@app.route("/logins", methods=["GET"])
-def logins_list():
-    return jsonify({"logins": logins.list_logins()})
-
-
-@app.route("/logins/add", methods=["POST"])
-def logins_add():
-    login_url = request.form.get("login_url", "").strip()
-    username  = request.form.get("username", "").strip()
-    password  = request.form.get("password", "").strip()
-    user_field = request.form.get("user_field", "").strip()
-    pass_field = request.form.get("pass_field", "").strip()
-
-    if not login_url or not username or not password:
-        return jsonify({"ok": False, "error": "login_url, username, password required"}), 400
-    if not login_url.startswith("http://") and not login_url.startswith("https://"):
-        return jsonify({"ok": False, "error": "login_url must start with http:// or https://"}), 400
-
-    result = logins.perform_login(login_url, username, password,
-                                    user_field or None, pass_field or None)
-    return jsonify({"ok": True, **result})
-
-
-@app.route("/logins/remove", methods=["POST"])
-def logins_remove():
-    domain = request.form.get("domain", "").strip()
-    if not domain:
-        return jsonify({"ok": False, "error": "domain required"}), 400
-    removed = logins.remove_login(domain)
-    return jsonify({"ok": removed})
-
-
-@app.route("/logins/detect", methods=["GET"])
-def logins_detect():
-    login_url = request.args.get("login_url", "").strip()
-    if not login_url:
-        return jsonify({"ok": False, "error": "login_url required"}), 400
-    user_field, pass_field = logins.detect_login_fields(login_url)
-    return jsonify({"ok": True, "user_field": user_field, "pass_field": pass_field})
 
 
 @app.route("/start", methods=["POST"])
