@@ -289,6 +289,12 @@ def tail_progress_file(job_id, path, stop_event):
                 if row:
                     if row != last_row:
                         last_row = row
+                        with jobs_lock:
+                            if job_id in jobs:
+                                rows = jobs[job_id].setdefault("rclone_rows", [])
+                                rows.append(row)
+                                if len(rows) > 500:
+                                    del rows[:len(rows)-500]
                         set_job(job_id,
                             progress=row["pct"],
                             rclone_progress={
@@ -344,7 +350,7 @@ def run_job(job):
 
     set_job(job_id, status="running", log="", progress=0, retries=0,
             started_at=now(), source_type=source_type, speed="", eta="",
-            rclone_progress=None)
+            rclone_progress=None, rclone_rows=[])
     append_log(job_id, f"[{now()}] Starting: {filename}\n")
     append_log(job_id, f"[{now()}] Source: {source_type.upper()} → {dest_path}\n")
 
