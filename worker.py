@@ -33,7 +33,7 @@ RETRY_DELAY    = 8
 STALL_TIMEOUT  = 120
 CONNECT_TIMEOUT = 30
 
-# --- توابع کمکی ---
+# --- توابع کمکی (Utilities) ---
 
 def _parse_size_str(s):
     if not s: return 0
@@ -61,7 +61,6 @@ def append_log(job_id, text):
             jobs[job_id]["log"] += text
 
 def parse_progress(line):
-    # برای لاگ‌های حجیم curl
     match = re.search(r'(\d+(?:\.\d+)?)\s*%', line)
     return float(match.group(1)) if match else None
 
@@ -77,20 +76,13 @@ def detect_source_type(url):
     if "instagram.com" in u: return "instagram"
     return "direct"
 
-def update_speed_history(speed_dl, speed_ul):
-    with stats_lock:
-        session_stats["current_speed_dl"] = speed_dl
-        session_stats["current_speed_ul"] = speed_ul
-        h_dl, h_ul = session_stats["history_dl"], session_stats["history_ul"]
-        h_dl.append(speed_dl)
-        h_ul.append(speed_ul)
-        if len(h_dl) > 40: h_dl.pop(0)
-        if len(h_ul) > 40: h_ul.pop(0)
-
-# --- موتورهای دانلود ---
+# --- بخش اصلی: دانلود مستقیم (Direct Download) ---
 
 def build_direct_cmd(url, dest_path):
-    """بخش مورد نظر شما: شبیه‌سازی دقیق مرورگر برای لینک‌های مستقیم"""
+    """
+    این بخش برای دانلود لینک‌های مستقیم حساس طراحی شده است.
+    با استفاده از شبیه‌سازی کامل هدرهای کروم و بافر سنگین rclone.
+    """
     safe_url = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
     rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
@@ -98,30 +90,38 @@ def build_direct_cmd(url, dest_path):
     parsed = urlparse(url)
     referer = f"{parsed.scheme}://{parsed.netloc}/"
     
-    # استفاده از curl-impersonate برای دور زدن فیلترهای TLS
+    # استفاده از curl-impersonate برای شبیه‌سازی اثرانگشت TLS مرورگر کروم
     curl_bin = "curl_chrome116" if shutil.which("curl_chrome116") else "curl"
     
+    # هدرهای دقیق مرورگر کروم برای جلوگیری از شناسایی ربات
     headers = [
-        f"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-        f"Referer: {referer}",
-        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language: en-US,en;q=0.9",
-        "Sec-Fetch-Dest: document",
-        "Sec-Fetch-Mode: navigate",
-        "Sec-Fetch-Site: same-origin",
+        f"Host: {parsed.netloc}",
         "Connection: keep-alive",
-        "Upgrade-Insecure-Requests: 1"
+        "Upgrade-Insecure-Requests: 1",
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Sec-Fetch-Site: none",
+        "Sec-Fetch-Mode: navigate",
+        "Sec-Fetch-User: ?1",
+        "Sec-Fetch-Dest: document",
+        "Accept-Encoding: gzip, deflate, br",
+        "Accept-Language: en-US,en;q=0.9",
+        f"Referer: {referer}"
     ]
     
     header_str = " ".join([f"-H {shlex.quote(h)}" for h in headers])
 
+    # نکته کلیدی: اضافه کردن بافر 128 مگابایتی به rclone
+    # این کار باعث می‌شود اگر آپلود به مگا کند شد، دانلودِ curl متوقف نشود و لینک نسوزد.
     return (
-        f"{curl_bin} -g -L -k {header_str} "
+        f"{curl_bin} -g -L -k {header_str} --compressed "
         f"--connect-timeout {CONNECT_TIMEOUT} "
-        f"--retry 3 --retry-delay 5 "
-        f"--speed-limit 1 --speed-time {STALL_TIMEOUT} "
-        f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest} --buffer-size 32M"
+        f"--speed-limit 100 --speed-time 30 "
+        f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest} "
+        f"--buffer-size 128M --mega-chunk-size 64M --transfers 1"
     )
+
+# --- بخش دانلود از یوتیوب و اینستاگرام ---
 
 def build_ytdlp_cmd(url, dest_path, quality="best"):
     safe_url = shlex.quote(url)
@@ -131,17 +131,16 @@ def build_ytdlp_cmd(url, dest_path, quality="best"):
     fmt = "bestvideo+bestaudio/best"
     if quality == "1080p": fmt = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
     elif quality == "720p": fmt = "bestvideo[height<=720]+bestaudio/best[height<=720]"
-    elif quality == "audio": fmt = "bestaudio/best"
-
+    
     tmp = f"/tmp/ytdl_{os.getpid()}.%(ext)s"
     return (
         f"set -e; "
-        f"OUTFILE=$(yt-dlp -f {shlex.quote(fmt)} --no-playlist --newline --merge-output-format mp4 -o {shlex.quote(tmp)} --print after_move:filepath {safe_url}); "
+        f"OUTFILE=$(yt-dlp -f {shlex.quote(fmt)} --no-playlist --newline --no-check-certificate --merge-output-format mp4 -o {shlex.quote(tmp)} --print after_move:filepath {safe_url}); "
         f"RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest} < \"$OUTFILE\"; "
         f"rm -f \"$OUTFILE\""
     )
 
-# --- مدیریت پروسه‌ها و اجرای Job ---
+# --- مدیریت اجرای تسک‌ها (Job Execution) ---
 
 def kill_job_process(job_id):
     with processes_lock:
@@ -162,7 +161,7 @@ def run_job(job):
     dest_path = f"{dest}/{filename}"
 
     set_job(job_id, status="running", log="", progress=0, retries=0, started_at=now(), source_type=source_type)
-    append_log(job_id, f"[{now()}] Starting transfer: {filename}\n")
+    append_log(job_id, f"[{now()}] Initializing {source_type} transfer...\n")
 
     if source_type in ("youtube", "instagram"):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
@@ -184,7 +183,7 @@ def run_job(job):
                     kill_job_process(job_id)
                     return
 
-                # آپدیت پروگرس بر اساس نوع منبع
+                # پارس کردن پروگرس
                 if source_type in ("youtube", "instagram"):
                     pct, size_str, speed_str, eta_str = parse_ytdlp_progress(line)
                     if pct is not None:
@@ -193,7 +192,7 @@ def run_job(job):
                     pct = parse_progress(line)
                     if pct is not None: set_job(job_id, progress=pct)
 
-                # لاگ کردن خروجی (بجز خطوط پروگرس شلوغ)
+                # لاگ کردن خروجی‌ها
                 if not any(x in line for x in ['#', '=', '    ']):
                     clean = line.strip()
                     if clean: append_log(job_id, f"[{now()}] {clean}\n")
@@ -203,15 +202,10 @@ def run_job(job):
 
             if p.returncode == 0:
                 set_job(job_id, status="done", progress=100, finished_at=now())
-                with stats_lock:
-                    session_stats["jobs_done"] += 1
-                    # تخمین حجم منتقل شده
-                    job_info = jobs.get(job_id, {})
-                    fs = _parse_size_str(job_info.get("filesize_str", "0"))
-                    session_stats["total_transferred_bytes"] += fs
+                with stats_lock: session_stats["jobs_done"] += 1
                 return
             else:
-                append_log(job_id, f"[{now()}] Attempt {attempt} failed. Retrying...\n")
+                append_log(job_id, f"[{now()}] Error: Process exited with {p.returncode}. Attempt {attempt}/{MAX_RETRIES}\n")
                 set_job(job_id, retries=attempt)
                 time.sleep(RETRY_DELAY)
 
@@ -235,5 +229,5 @@ def worker_loop():
         finally:
             job_queue.task_done()
 
-# شروع ترد ورکر
+# شروع ترد ورکر در پس‌زمینه
 threading.Thread(target=worker_loop, daemon=True).start()
