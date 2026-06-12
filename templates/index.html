@@ -869,19 +869,44 @@ select { padding-left: 14px; }
         </div>
       </div>
 
-      <!-- Advanced headers -->
+      <!-- Login (optional) -->
       <div class="field" style="margin-top:8px">
-        <div class="field-label">Referer (اختیاری — برای CDN هایی که هدر خاص میخوان)</div>
+        <div class="field-label">Login URL (اختیاری)</div>
         <div class="input-wrap">
-          <span class="input-ico">🔗</span>
-          <input type="text" id="iReferer" placeholder="https://example.com/" autocomplete="off">
+          <span class="input-ico">🔐</span>
+          <input type="text" id="iLoginUrl" placeholder="https://example.com/login" autocomplete="off">
         </div>
       </div>
-      <div class="field" style="margin-top:8px">
-        <div class="field-label">Cookie (اختیاری)</div>
-        <div class="input-wrap">
-          <span class="input-ico">🍪</span>
-          <input type="text" id="iCookie" placeholder="name=value; name2=value2" autocomplete="off">
+      <div class="dest-row">
+        <div class="field">
+          <div class="field-label">Username field name</div>
+          <div class="input-wrap">
+            <span class="input-ico">🏷️</span>
+            <input type="text" id="iLoginUserField" placeholder="username" autocomplete="off">
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Password field name</div>
+          <div class="input-wrap">
+            <span class="input-ico">🏷️</span>
+            <input type="text" id="iLoginPassField" placeholder="password" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="dest-row">
+        <div class="field">
+          <div class="field-label">Username</div>
+          <div class="input-wrap">
+            <span class="input-ico">👤</span>
+            <input type="text" id="iLoginUsername" placeholder="" autocomplete="off">
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Password</div>
+          <div class="input-wrap">
+            <span class="input-ico">🔑</span>
+            <input type="password" id="iLoginPassword" placeholder="" autocomplete="off">
+          </div>
         </div>
       </div>
 
@@ -1087,8 +1112,11 @@ async function startTransfer() {
     form.append('filename', file);
     form.append('dest', dest);
     form.append('quality', selectedQuality);
-    form.append('referer', document.getElementById('iReferer').value.trim());
-    form.append('cookie', document.getElementById('iCookie').value.trim());
+    form.append('login_url', document.getElementById('iLoginUrl').value.trim());
+    form.append('login_user_field', document.getElementById('iLoginUserField').value.trim());
+    form.append('login_pass_field', document.getElementById('iLoginPassField').value.trim());
+    form.append('login_username', document.getElementById('iLoginUsername').value.trim());
+    form.append('login_password', document.getElementById('iLoginPassword').value);
 
     const data = await fetch('/start', { method: 'POST', body: form }).then(r => r.json());
     if (data.error) { toast('✕ ' + data.error); return; }
