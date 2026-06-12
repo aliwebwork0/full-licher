@@ -301,7 +301,6 @@ def run_job(job):
                         set_job(job_id, progress=pct, speed=speed_str or "", eta=eta_str or "")
                         if size_str:
                             set_job(job_id, filesize_str=size_str)
-                        # estimate speed bytes
                         spd = 0
                         if speed_str:
                             m = re.search(r'([\d.]+)\s*([KkMmGg]?)iB/s', speed_str)
@@ -313,41 +312,52 @@ def run_job(job):
                         update_speed_history(spd, spd * 0.95)
                         continue
 
-                # rclone progress table parsing
-                # Lines look like: "  45  1.34G  45  625.0M  0  0  85.34M"
+                # rclone/curl progress table — MUST run before is_progress_line filter
+                # curl --progress-bar table format:
+                #   % Total    % Received  % Xferd  Average Speed   Time    Time     Time  Current
+                #                                    Dload  Upload   Total   Spent    Left  Speed
+                #  5  1.34G  5  81.23M  0  0  79.25M  0 --:--:-- --:--:-- --:--:-- 79.20M
+                # Simplified rows (after header scrolls off):
+                #  45  1.34G  45  625.0M  0  0  85.34M  0 ...
+                # We match the core numeric block at start of line:
                 rclone_match = re.match(
-                    r'^\s*(\d+)\s+([\d.]+[KMGT]?)\s+(\d+)\s+([\d.]+[KMGT]?)\s+\d+\s+\d+\s+([\d.]+[KMGT]?)\s*$',
+                    r'^\s*(\d+)\s+([\d.]+[KMGTkmgt]?)\s+\d+\s+([\d.]+[KMGTkmgt]?)\s+\d+\s+\d+\s+([\d.]+[KMGTkmgt]?)',
                     line
                 )
                 if rclone_match:
-                    pct_val = int(rclone_match.group(1))
-                    total_s = rclone_match.group(2)
-                    spent_s = rclone_match.group(4)
-                    speed_s = rclone_match.group(5)
-                    # estimate left
+                    pct_val  = int(rclone_match.group(1))
+                    total_s  = rclone_match.group(2)
+                    spent_s  = rclone_match.group(3)
+                    speed_s  = rclone_match.group(4)
+
+                    def fmt_size(s):
+                        """Add B suffix for display if missing"""
+                        return s if s[-1].isalpha() else s + "B"
+
                     try:
-                        spd_b = _parse_size_str(speed_s + "B") or 1
-                        tot_b = _parse_size_str(total_s + "B")
-                        spt_b = _parse_size_str(spent_s + "B")
+                        spd_b  = _parse_size_str(speed_s + "B") or 1
+                        tot_b  = _parse_size_str(total_s + "B")
+                        spt_b  = _parse_size_str(spent_s + "B")
                         left_b = max(0, tot_b - spt_b)
                         left_secs = int(left_b / spd_b) if spd_b else 0
-                        left_str = f"{left_secs//60}m{left_secs%60:02d}s" if left_secs > 0 else "—"
+                        left_str  = f"{left_secs//60}m{left_secs%60:02d}s" if left_secs > 0 else "—"
                     except Exception:
                         left_str = "—"
+
                     set_job(job_id,
                         progress=pct_val,
                         rclone_progress={
-                            "pct": pct_val,
+                            "pct":   pct_val,
                             "total": total_s,
                             "spent": spent_s,
-                            "left": left_str,
-                            "speed": speed_s + "/s"
+                            "left":  left_str,
+                            "speed": speed_s + "/s",
                         },
                         speed=speed_s + "/s"
                     )
                     continue
 
-                # curl progress
+                # curl progress % only
                 progress = parse_progress(line)
                 if progress is not None:
                     set_job(job_id, progress=progress)
