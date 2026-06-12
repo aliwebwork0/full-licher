@@ -1295,8 +1295,10 @@ function updateJobItem(item, id, job) {
 
 function renderRcloneCard(id, job) {
   const rc = job.rclone_progress;
-  const show = rc && (job.status === 'running' || job.status === 'done');
-  if (!show) return '';
+  if (!rc) return '';
+  const isActive = job.status === 'running' || job.status === 'done';
+  if (!isActive) return '';
+  const speedColor = job.status === 'done' ? 'color:var(--muted2)' : '';
   return `<div class="rclone-card" id="rc-${id}">
     <div class="rc-cell total">
       <span class="rc-label">Total</span>
@@ -1307,12 +1309,12 @@ function renderRcloneCard(id, job) {
       <span class="rc-val">${esc(rc.spent || '—')}</span>
     </div>
     <div class="rc-cell left">
-      <span class="rc-label">ETA</span>
-      <span class="rc-val">${esc(rc.left || '—')}</span>
+      <span class="rc-label">${job.status === 'done' ? 'Time' : 'ETA'}</span>
+      <span class="rc-val">${job.status === 'done' ? '✓' : esc(rc.left || '—')}</span>
     </div>
     <div class="rc-cell speed">
       <span class="rc-label">Speed</span>
-      <span class="rc-val">${esc(rc.speed || '—')}</span>
+      <span class="rc-val" style="${speedColor}">${job.status === 'done' ? '—' : esc(rc.speed || '—')}</span>
     </div>
   </div>`;
 }
