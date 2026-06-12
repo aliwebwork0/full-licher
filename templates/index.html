@@ -808,14 +808,6 @@ select { padding-left: 14px; }
     </div>
   </div>
 
-  <!-- ── PAGE TABS ── -->
-  <div class="source-tabs anim-fadeup" style="animation-delay:.07s">
-    <button class="source-tab active" onclick="setPageTab('transfer')" id="page-tab-transfer">⬇ Transfer</button>
-    <button class="source-tab" onclick="setPageTab('logins')" id="page-tab-logins">🔐 Logins</button>
-  </div>
-
-  <div id="page-transfer">
-
   <!-- ── INPUT CARD ── -->
   <div class="card anim-fadeup" style="animation-delay:.1s">
     <div class="card-head">
@@ -889,7 +881,6 @@ select { padding-left: 14px; }
         <button class="btn-browse" onclick="openMegaBrowser()">Browse</button>
       </div>
 
-
       <!-- Start -->
       <button class="btn-start" id="startBtn" onclick="startTransfer()">
         <div class="spin"></div>
@@ -908,63 +899,6 @@ select { padding-left: 14px; }
     </div>
     <div class="jobs-list" id="jobsList"></div>
   </div>
-
-  </div><!-- /page-transfer -->
-
-  <!-- ── PAGE: LOGINS ── -->
-  <div id="page-logins" style="display:none">
-
-    <div class="card anim-fadeup">
-      <div class="card-head">
-        <div class="card-head-dot"></div>
-        <div class="card-head-title">Add Login</div>
-      </div>
-      <div class="card-body">
-
-        <div class="field">
-          <div class="field-label">Login URL</div>
-          <div class="input-wrap">
-            <span class="input-ico">🔗</span>
-            <input type="text" id="loginUrl" placeholder="https://example.com/login" autocomplete="off">
-          </div>
-        </div>
-
-        <div class="dest-row">
-          <div class="field">
-            <div class="field-label">Username</div>
-            <div class="input-wrap">
-              <span class="input-ico">👤</span>
-              <input type="text" id="loginUsername" placeholder="" autocomplete="off">
-            </div>
-          </div>
-          <div class="field">
-            <div class="field-label">Password</div>
-            <div class="input-wrap">
-              <span class="input-ico">🔑</span>
-              <input type="password" id="loginPassword" placeholder="" autocomplete="off">
-            </div>
-          </div>
-        </div>
-
-        <button class="btn-start" id="loginBtn" onclick="addLogin()">
-          <div class="spin"></div>
-          <span class="lbl">🔐 Login &amp; Save</span>
-        </button>
-
-      </div>
-    </div>
-
-    <div class="card anim-fadeup" style="animation-delay:.05s">
-      <div class="card-head">
-        <div class="card-head-dot"></div>
-        <div class="card-head-title">Saved Logins</div>
-      </div>
-      <div class="card-body">
-        <div id="loginsList" style="display:flex;flex-direction:column;gap:10px"></div>
-      </div>
-    </div>
-
-  </div><!-- /page-logins -->
 
   <!-- ── FOOTER ── -->
   <div class="footer">
@@ -1024,97 +958,8 @@ async function api(path, method = 'GET') {
 }
 
 // ═══════════════════════════════════════════
-// PAGE TABS
+// SOURCE TABS
 // ═══════════════════════════════════════════
-function setPageTab(tab) {
-  document.getElementById('page-transfer').style.display = tab === 'transfer' ? '' : 'none';
-  document.getElementById('page-logins').style.display = tab === 'logins' ? '' : 'none';
-  document.getElementById('page-tab-transfer').classList.toggle('active', tab === 'transfer');
-  document.getElementById('page-tab-logins').classList.toggle('active', tab === 'logins');
-  if (tab === 'logins') loadLogins();
-}
-
-// ═══════════════════════════════════════════
-// LOGINS
-// ═══════════════════════════════════════════
-async function addLogin() {
-  const login_url = document.getElementById('loginUrl').value.trim();
-  const username  = document.getElementById('loginUsername').value.trim();
-  const password  = document.getElementById('loginPassword').value;
-
-  if (!login_url || !username || !password) {
-    toast('⚠ Fill in login URL, username and password');
-    return;
-  }
-
-  const btn = document.getElementById('loginBtn');
-  btn.classList.add('loading');
-
-  try {
-    const form = new FormData();
-    form.append('login_url', login_url);
-    form.append('username', username);
-    form.append('password', password);
-
-    const r = await fetch('/logins/add', { method: 'POST', body: form });
-    const data = await r.json();
-
-    if (data.ok && data.status === 'success') {
-      toast('✓ Login successful for ' + data.domain);
-      document.getElementById('loginPassword').value = '';
-      loadLogins();
-    } else if (data.ok) {
-      toast('✕ Login failed (' + (data.detail || 'unknown error') + ')');
-      loadLogins();
-    } else {
-      toast('⚠ ' + (data.error || 'Error'));
-    }
-  } catch (e) {
-    toast('⚠ ' + e.message);
-  } finally {
-    btn.classList.remove('loading');
-  }
-}
-
-async function loadLogins() {
-  try {
-    const data = await api('/logins');
-    const list = document.getElementById('loginsList');
-    if (!data.logins || !data.logins.length) {
-      list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">هیچ لاگین ذخیره‌شده‌ای وجود ندارد.</div>';
-      return;
-    }
-    list.innerHTML = data.logins.map(l => `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px">
-        <div style="min-width:0">
-          <div style="font-weight:600;font-size:14px">${esc(l.domain)}</div>
-          <div style="color:var(--muted);font-size:12px">${esc(l.username)}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <span style="font-size:12px;color:${l.status === 'success' ? 'var(--green,#00f0a0)' : '#ff5577'}">
-            ${l.status === 'success' ? '✓ Active' : '✕ Failed'}
-          </span>
-          <button class="btn-sm danger" onclick="removeLogin('${esc(l.domain)}')">Remove</button>
-        </div>
-      </div>
-    `).join('');
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-async function removeLogin(domain) {
-  try {
-    const form = new FormData();
-    form.append('domain', domain);
-    await fetch('/logins/remove', { method: 'POST', body: form });
-    loadLogins();
-  } catch (e) {
-    toast('⚠ ' + e.message);
-  }
-}
-
-
 function setSourceTab(tab) {
   activeSourceTab = tab;
   ['direct','youtube','instagram'].forEach(t => {
