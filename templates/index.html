@@ -761,6 +761,23 @@ select { padding-left: 14px; }
   80%     { transform: translateX(3px); }
 }
 .anim-fadeup { animation: fadeUp .4s ease both; }
+
+.rclone-card {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 8px 0 4px;
+  background: rgba(0,212,255,0.04);
+  border: 1px solid rgba(0,212,255,0.15);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.rclone-card.hidden { display: none; }
+.rc-cell { display: flex; flex-direction: column; gap: 2px; }
+.rc-label { font-size: 8px; letter-spacing: 1px; color: var(--muted2); font-family: var(--mono); text-transform: uppercase; }
+.rc-val { font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--cyan); }
+.rc-cell.speed .rc-val { color: #a78bfa; }
+.rc-cell.left  .rc-val { color: var(--yellow); }
 </style>
 </head>
 <body>
@@ -1190,6 +1207,7 @@ function jobItemHTML(id, job) {
     <div class="job-progress">
       <div class="job-progress-fill" style="width:${job.progress||0}%;${barStyle}"></div>
     </div>
+    ${renderRcloneCard(id, job)}
     <div class="job-detail ${open}">
       <div class="job-actions">
         ${job.status === 'running' || job.status === 'queued'
@@ -1235,6 +1253,23 @@ function updateJobItem(item, id, job) {
     sub.innerHTML = parts.join('');
   }
 
+  // Update rclone progress card
+  const rcEl = item.querySelector(`#rc-${id}`);
+  const newRcHtml = renderRcloneCard(id, job);
+  if (newRcHtml) {
+    if (rcEl) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = newRcHtml;
+      rcEl.replaceWith(tmp.firstElementChild);
+    } else {
+      // insert after progress bar
+      const progEl = item.querySelector('.job-progress');
+      if (progEl) progEl.insertAdjacentHTML('afterend', newRcHtml);
+    }
+  } else if (rcEl) {
+    rcEl.remove();
+  }
+
   const logEl = item.querySelector(`#log-${id}`);
   if (logEl && openDetails[id]) {
     logEl.innerHTML = renderLogHTML(job.log);
@@ -1256,6 +1291,30 @@ function updateJobItem(item, id, job) {
       if (stopBtn) stopBtn.remove();
     }
   }
+}
+
+function renderRcloneCard(id, job) {
+  const rc = job.rclone_progress;
+  const show = rc && (job.status === 'running' || job.status === 'done');
+  if (!show) return '';
+  return `<div class="rclone-card" id="rc-${id}">
+    <div class="rc-cell total">
+      <span class="rc-label">Total</span>
+      <span class="rc-val">${esc(rc.total || '—')}</span>
+    </div>
+    <div class="rc-cell spent">
+      <span class="rc-label">Downloaded</span>
+      <span class="rc-val">${esc(rc.spent || '—')}</span>
+    </div>
+    <div class="rc-cell left">
+      <span class="rc-label">ETA</span>
+      <span class="rc-val">${esc(rc.left || '—')}</span>
+    </div>
+    <div class="rc-cell speed">
+      <span class="rc-label">Speed</span>
+      <span class="rc-val">${esc(rc.speed || '—')}</span>
+    </div>
+  </div>`;
 }
 
 function renderLogHTML(log) {
