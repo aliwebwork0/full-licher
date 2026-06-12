@@ -18,8 +18,11 @@ def start():
     filename = request.form.get("filename", "").strip()
     dest     = request.form.get("dest", "mega:/Video").strip()
     quality  = request.form.get("quality", "best").strip()
-    referer  = request.form.get("referer", "").strip()
-    cookie   = request.form.get("cookie", "").strip()
+    login_url   = request.form.get("login_url", "").strip()
+    login_user_field = request.form.get("login_user_field", "").strip()
+    login_pass_field = request.form.get("login_pass_field", "").strip()
+    login_username   = request.form.get("login_username", "").strip()
+    login_password   = request.form.get("login_password", "").strip()
 
     if not url or not filename:
         return jsonify({"error": "URL and filename are required"}), 400
@@ -44,11 +47,19 @@ def start():
             "speed":       "",
             "eta":         "",
             "source_type": "direct",
-            "referer":     referer,
-            "cookie":      cookie,
+            "login_url":          login_url,
+            "login_user_field":   login_user_field,
+            "login_pass_field":   login_pass_field,
+            "login_username":     login_username,
+            "login_password":     login_password,
         }
 
-    job_queue.put({"id": job_id, "url": url, "filename": filename, "dest": dest, "quality": quality, "referer": referer, "cookie": cookie})
+    job_queue.put({
+        "id": job_id, "url": url, "filename": filename, "dest": dest, "quality": quality,
+        "login_url": login_url, "login_user_field": login_user_field,
+        "login_pass_field": login_pass_field, "login_username": login_username,
+        "login_password": login_password,
+    })
     return jsonify({"job_id": job_id})
 
 

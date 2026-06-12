@@ -131,18 +131,36 @@ def detect_source_type(url):
     return "direct"
 
 
-def build_direct_cmd(url, dest_path, custom_referer="", custom_cookie=""):
+def build_login_cmd(login_url, user_field, pass_field, username, password, jar_path):
+    """curl command performing a form POST login, saving cookies to jar_path."""
+    safe_login_url = shlex.quote(login_url)
+    safe_jar = shlex.quote(jar_path)
+    data = f"{user_field}={username}&{pass_field}={password}"
+    safe_data = shlex.quote(data)
+    return (
+        f"curl -g -L -s -o /dev/null "
+        f"--connect-timeout {CONNECT_TIMEOUT} "
+        f"-c {safe_jar} -b {safe_jar} "
+        f"-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' "
+        f"-H 'Content-Type: application/x-www-form-urlencoded' "
+        f"--data {safe_data} "
+        f"{safe_login_url}"
+    )
+
+
+def build_direct_cmd(url, dest_path, jar_path=""):
     safe_url  = shlex.quote(url)
     safe_dest = shlex.quote(dest_path)
-    referer   = custom_referer.strip() or get_referer(url)
+    referer   = get_referer(url)
     rclone_cfg = shlex.quote(RCLONE_CONFIG_PATH)
 
-    extra_headers = ""
-    if custom_cookie.strip():
-        extra_headers += f"-H {shlex.quote('Cookie: ' + custom_cookie.strip())} "
+    cookie_opt = ""
+    if jar_path:
+        safe_jar = shlex.quote(jar_path)
+        cookie_opt = f"-b {safe_jar} "
 
     return (
-        f"curl -L "
+        f"curl -g -L "
         f"--connect-timeout {CONNECT_TIMEOUT} "
         f"--retry 3 --retry-delay 5 --retry-all-errors "
         f"--speed-limit 1 --speed-time {STALL_TIMEOUT} "
@@ -153,7 +171,7 @@ def build_direct_cmd(url, dest_path, custom_referer="", custom_cookie=""):
         f"-H 'Accept: */*' "
         f"-H 'Accept-Language: en-US,en;q=0.9' "
         f"-H 'Connection: keep-alive' "
-        f"{extra_headers}"
+        f"{cookie_opt}"
         f"--progress-bar "
         f"--fail "
         f"{safe_url} | RCLONE_CONFIG={rclone_cfg} rclone rcat {safe_dest}"
@@ -260,10 +278,29 @@ def run_job(job):
         except Exception:
             pass
 
+    login_url        = job.get("login_url", "")
+    login_user_field = job.get("login_user_field", "")
+    login_pass_field = job.get("login_pass_field", "")
+    login_username   = job.get("login_username", "")
+    login_password   = job.get("login_password", "")
+
+    jar_path = ""
+    if login_url and login_user_field and login_pass_field:
+        jar_path = f"/tmp/cookies_{job_id}.txt"
+        login_cmd = build_login_cmd(login_url, login_user_field, login_pass_field,
+                                     login_username, login_password, jar_path)
+        append_log(job_id, f"[{now()}] Logging in to {get_referer(login_url)}...\n")
+        try:
+            subprocess.run(login_cmd, shell=True, timeout=30)
+            append_log(job_id, f"[{now()}] Login request sent.\n")
+        except Exception as e:
+            append_log(job_id, f"[{now()}] Login failed: {e}\n")
+            jar_path = ""
+
     if source_type in ("youtube", "instagram"):
         cmd = build_ytdlp_cmd(url, dest_path, quality)
     else:
-        cmd = build_direct_cmd(url, dest_path, job.get("referer", ""), job.get("cookie", ""))
+        cmd = build_direct_cmd(url, dest_path, jar_path)
 
     env = os.environ.copy()
     env["RCLONE_CONFIG"] = RCLONE_CONFIG_PATH
@@ -348,6 +385,11 @@ def run_job(job):
                         session_stats["total_transferred_bytes"] += int(fs)
                     elif job_snapshot.get("filesize_str"):
                         session_stats["total_transferred_bytes"] += _parse_size_str(job_snapshot["filesize_str"])
+                if jar_path:
+                    try:
+                        os.remove(jar_path)
+                    except Exception:
+                        pass
                 return
             else:
                 append_log(job_id, f"[{now()}] ✗ Failed (exit {p.returncode}) — attempt {attempt}/{MAX_RETRIES}\n")
@@ -374,6 +416,11 @@ def run_job(job):
     with stats_lock:
         session_stats["jobs_failed"] += 1
     append_log(job_id, f"[{now()}] ✗ All {MAX_RETRIES} attempts failed.\n")
+    if jar_path:
+        try:
+            os.remove(jar_path)
+        except Exception:
+            pass
 
 
 def worker_loop():
