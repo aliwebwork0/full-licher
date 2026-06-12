@@ -3,6 +3,7 @@ import uuid
 import subprocess
 import shlex
 from worker import job_queue, jobs, jobs_lock, processes, processes_lock, session_stats, stats_lock
+import logins
 
 app = Flask(__name__)
 
@@ -12,17 +13,53 @@ def home():
     return render_template("index.html")
 
 
+@app.route("/logins", methods=["GET"])
+def logins_list():
+    return jsonify({"logins": logins.list_logins()})
+
+
+@app.route("/logins/add", methods=["POST"])
+def logins_add():
+    login_url = request.form.get("login_url", "").strip()
+    username  = request.form.get("username", "").strip()
+    password  = request.form.get("password", "").strip()
+    user_field = request.form.get("user_field", "").strip()
+    pass_field = request.form.get("pass_field", "").strip()
+
+    if not login_url or not username or not password:
+        return jsonify({"ok": False, "error": "login_url, username, password required"}), 400
+    if not login_url.startswith("http://") and not login_url.startswith("https://"):
+        return jsonify({"ok": False, "error": "login_url must start with http:// or https://"}), 400
+
+    result = logins.perform_login(login_url, username, password,
+                                    user_field or None, pass_field or None)
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/logins/remove", methods=["POST"])
+def logins_remove():
+    domain = request.form.get("domain", "").strip()
+    if not domain:
+        return jsonify({"ok": False, "error": "domain required"}), 400
+    removed = logins.remove_login(domain)
+    return jsonify({"ok": removed})
+
+
+@app.route("/logins/detect", methods=["GET"])
+def logins_detect():
+    login_url = request.args.get("login_url", "").strip()
+    if not login_url:
+        return jsonify({"ok": False, "error": "login_url required"}), 400
+    user_field, pass_field = logins.detect_login_fields(login_url)
+    return jsonify({"ok": True, "user_field": user_field, "pass_field": pass_field})
+
+
 @app.route("/start", methods=["POST"])
 def start():
     url      = request.form.get("url", "").strip()
     filename = request.form.get("filename", "").strip()
     dest     = request.form.get("dest", "mega:/Video").strip()
     quality  = request.form.get("quality", "best").strip()
-    login_url   = request.form.get("login_url", "").strip()
-    login_user_field = request.form.get("login_user_field", "").strip()
-    login_pass_field = request.form.get("login_pass_field", "").strip()
-    login_username   = request.form.get("login_username", "").strip()
-    login_password   = request.form.get("login_password", "").strip()
 
     if not url or not filename:
         return jsonify({"error": "URL and filename are required"}), 400
@@ -47,19 +84,9 @@ def start():
             "speed":       "",
             "eta":         "",
             "source_type": "direct",
-            "login_url":          login_url,
-            "login_user_field":   login_user_field,
-            "login_pass_field":   login_pass_field,
-            "login_username":     login_username,
-            "login_password":     login_password,
         }
 
-    job_queue.put({
-        "id": job_id, "url": url, "filename": filename, "dest": dest, "quality": quality,
-        "login_url": login_url, "login_user_field": login_user_field,
-        "login_pass_field": login_pass_field, "login_username": login_username,
-        "login_password": login_password,
-    })
+    job_queue.put({"id": job_id, "url": url, "filename": filename, "dest": dest, "quality": quality})
     return jsonify({"job_id": job_id})
 
 
