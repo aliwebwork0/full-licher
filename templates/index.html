@@ -778,6 +778,15 @@ select { padding-left: 14px; }
 .rc-val { font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--cyan); }
 .rc-cell.speed .rc-val { color: #a78bfa; }
 .rc-cell.left  .rc-val { color: var(--yellow); }
+
+.rc-table-wrap { max-height: 180px; overflow-y: auto; margin: 8px 0 4px; border: 1px solid rgba(0,212,255,0.15); border-radius: 8px; background: rgba(0,212,255,0.04); }
+.rc-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+.rc-table th, .rc-table td { padding: 3px 8px; text-align: right; white-space: nowrap; }
+.rc-table th { position: sticky; top: 0; background: rgba(10,16,28,0.95); color: var(--muted2); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+.rc-table td.pct { color: var(--cyan); font-weight: 700; }
+.rc-table td.speed { color: #a78bfa; }
+.rc-table td.left { color: var(--yellow); }
+.rc-table tr:last-child td { color: #fff; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -1294,28 +1303,22 @@ function updateJobItem(item, id, job) {
 }
 
 function renderRcloneCard(id, job) {
-  const rc = job.rclone_progress;
-  if (!rc) return '';
+  const rows = job.rclone_rows;
+  if (!rows || !rows.length) return '';
   const isActive = job.status === 'running' || job.status === 'done';
   if (!isActive) return '';
-  const speedColor = job.status === 'done' ? 'color:var(--muted2)' : '';
-  return `<div class="rclone-card" id="rc-${id}">
-    <div class="rc-cell total">
-      <span class="rc-label">Total</span>
-      <span class="rc-val">${esc(rc.total || '—')}</span>
-    </div>
-    <div class="rc-cell spent">
-      <span class="rc-label">Downloaded</span>
-      <span class="rc-val">${esc(rc.spent || '—')}</span>
-    </div>
-    <div class="rc-cell left">
-      <span class="rc-label">${job.status === 'done' ? 'Time' : 'ETA'}</span>
-      <span class="rc-val">${job.status === 'done' ? '✓' : esc(rc.left || '—')}</span>
-    </div>
-    <div class="rc-cell speed">
-      <span class="rc-label">Speed</span>
-      <span class="rc-val" style="${speedColor}">${job.status === 'done' ? '—' : esc(rc.speed || '—')}</span>
-    </div>
+  const trs = rows.map(r => `<tr>
+      <td class="pct">${r.pct}%</td>
+      <td>${esc(r.total)}</td>
+      <td>${esc(r.spent)}</td>
+      <td class="left">${esc(r.left)}</td>
+      <td class="speed">${esc(r.speed)}</td>
+    </tr>`).join('');
+  return `<div class="rc-table-wrap" id="rc-${id}">
+    <table class="rc-table">
+      <thead><tr><th>%</th><th>Total</th><th>Downloaded</th><th>Left</th><th>Speed</th></tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
   </div>`;
 }
 
