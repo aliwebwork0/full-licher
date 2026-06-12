@@ -54,6 +54,38 @@ def now():
     return datetime.utcnow().strftime("%H:%M:%S")
 
 
+def iter_stream_lines(stream):
+    """Read a text stream char-by-char and yield 'lines' split on either
+    \\n or \\r. curl --progress-bar rewrites its progress line using \\r
+    without ever emitting \\n, so the default `for line in stream` never
+    yields until the whole transfer is done. This makes progress live."""
+    buf = []
+    while True:
+        ch = stream.read(1)
+        if ch == "":
+            break
+        if ch == "\n" or ch == "\r":
+            if buf:
+                yield "".join(buf)
+                buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        yield "".join(buf)
+
+
+def fmt_bytes(n):
+    try:
+        n = float(n)
+    except Exception:
+        return ""
+    for unit in ["B", "KiB", "MiB", "GiB", "TiB"]:
+        if n < 1024 or unit == "TiB":
+            return f"{n:.2f}{unit}" if unit != "B" else f"{int(n)}B"
+        n /= 1024
+    return f"{n:.2f}TiB"
+
+
 def set_job(job_id, **kwargs):
     with jobs_lock:
         if job_id in jobs:
@@ -252,7 +284,7 @@ def run_job(job):
             with urllib.request.urlopen(req, timeout=8) as resp:
                 cl = resp.headers.get("Content-Length")
                 if cl and cl.isdigit() and int(cl) > 0:
-                    set_job(job_id, filesize=int(cl))
+                    set_job(job_id, filesize=int(cl), filesize_str=fmt_bytes(int(cl)))
         except Exception:
             pass
 
@@ -288,7 +320,7 @@ def run_job(job):
             last_dl_bytes = 0
             last_speed = 0.0
 
-            for line in p.stdout:
+            for line in iter_stream_lines(p.stdout):
                 if is_cancelled(job_id):
                     kill_job_process(job_id)
                     append_log(job_id, f"[{now()}] Cancelled mid-transfer.\n")
@@ -355,6 +387,7 @@ def run_job(job):
                         },
                         speed=speed_s + "/s"
                     )
+                    update_speed_history(spd_b, 0)
                     continue
 
                 # curl progress % only
